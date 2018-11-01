@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+     <title>Eddy Skeleton View</title>
+      <meta charset="utf-8"/>
+   
+    <script type="text/javascript" src="../eddyGUI/lib/three_mini.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/OrbitControls.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/TrackballControls.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/delaunay.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/dat.gui.js"></script>  
+    
+    <style>
+        body 
+        {
+           margin: 0;
+           overflow: hidden;
+        }
+        
+        #inset  
+        {
+           width: 130px;
+           height: 130px;
+           background-color: rgba(255,255,255,0.00); 
+           margin: 3px;
+           padding: 0px;
+           position: fixed;
+           left: 0px;
+           bottom: 0px;
+           z-index: 1;
+        }
+        
+        .longtext 
+        {
+           line-height: 13px !important;
+           height: 40px !important;  
+        }
+    
+        .full_width 
+        {
+           width: 100% !important;
+        }                
+    </style>
+</head>
+<body>
+
+
+<input id="myInput" type="file" multiple style="visibility:hidden" />
+
+<div id="WebGL-output">
+</div>
+
+<div id="inset">
+</div>
+
+<script type="text/javascript">
+
+/*    
+var objectlist = [];
+var scene, camera, renderer, controls, trackballControls; 
+var clock = new THREE.Clock();
+*/
+
+
+var container, container2, scene, scene2, camera, camera2, webGLRenderer, insetRenderer, trackballControls, gui, controls, properties, filepro;
+var skeletonlist = [], durationlist = [];
+var cyc_depth_array = [], anti_depth_array = [], cyc_radius_array = [], anti_radius_array = [], cyc_volume_array = [], anti_volume_array = [];
+var file_type = -1, fileID = 0;
+var clock = new THREE.Clock();
+var CANVAS_WIDTH = 130, CANVAS_HEIGHT = 130, CAM_DISTANCE = 200;
+var infoWindow;
+
+var pivot = new THREE.Group(); 
+var group = new THREE.Object3D();
+
+var surfacegeometry = new THREE.Geometry();      
+var snowmountaingeometry = new THREE.Geometry();
+var oceangeometry = new THREE.Geometry();
+var seabedgeometry = new THREE.Geometry();  
+
+
+
+init();
+render();
+
+    
+function init() 
+{
+    scene = new THREE.Scene();
+        
+    // add spotlight for the shadows
+    var spotLight = new THREE.SpotLight(0xffffff); 
+    spotLight.position.set(120, 120, -90);
+    spotLight.castShadow = true;
+    scene.add(spotLight); 
+    
+    //var directionlight = new THREE.DirectionalLight( 0xffffff, 0.75 );
+		//directionlight.position.set( 120, 120, -80 );
+    //scene.add(directionlight);        
+
+    // add subtle ambient lighting
+    var ambiColor = "#0c0c0c";
+    var ambientLight = new THREE.AmbientLight(ambiColor);
+    scene.add(ambientLight);
+        
+        
+    var hemiLight = new THREE.HemisphereLight(0x0000ff, 0x00ff00, 0.6);
+    hemiLight.position.set(0, 300, 0);
+    scene.add(hemiLight);
+    
+    
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);    
+    camera.position.x = 120;
+    camera.position.y = 30;
+    camera.position.z = 30;
+    
+    webGLRenderer = new THREE.WebGLRenderer();
+    webGLRenderer.setClearColor(new THREE.Color(0xffffff, 1.0));
+    webGLRenderer.setSize(window.innerWidth, window.innerHeight);
+    webGLRenderer.shadowMapEnabled = true;
+      
+
+    document.getElementById("WebGL-output").appendChild(webGLRenderer.domElement);
+        
+        
+    trackballControls = new THREE.TrackballControls(camera, webGLRenderer.domElement);
+    trackballControls.rotateSpeed = 1.0;
+    trackballControls.zoomSpeed = 1.0;
+    trackballControls.maxDistance = 150;
+    trackballControls.panSpeed = 1.0;
+    trackballControls.staticMoving = true;  
+
+
+    controls = new function () 
+    {
+       this.depth = 500;
+       this.duration = 30;
+    };
+    
+    
+    properties = function ()
+    {
+    	  this['File Type'] = 'N/A'; 
+    };
+    
+    filepro = new properties();
+
+
+    var filelist = [];   
+    gui = new dat.GUI();
+                
+    var GuiConfig = function() 
+    {            
+        this['Load *.day or *.path Files'] = function()  
+        {
+            var input = document.getElementById("myInput");
+                
+            input.addEventListener('change', function(evt) 
+            {                 	                               
+               for (var i in gui.__controllers) 
+                   gui.__controllers[i].updateDisplay();
+                                      
+               filelist = evt.target.files;                                                        
+               openselectedfiles( filelist ); 
+               
+                                                    
+            });
+        
+            input.click();
+        };
+        
+        
+        this['Export Statistics'] = function() 
+        {  
+        	  if (infoWindow != null && ! infoWindow.closed)
+            	 infoWindow.close();
+
+            var Cyc_Depth_Max = round(Math.max.apply(null, cyc_depth_array), 2);
+            var Cyc_Depth_Min = round(Math.min.apply(null, cyc_depth_array), 2);
+            var Anti_Depth_Max = round(Math.max.apply(null, anti_depth_array), 2);
+            var Anti_Depth_Min = round(Math.min.apply(null, anti_depth_array), 2);
+            var Cyc_Depth_Sum = 0, Anti_Depth_Sum = 0;
+            
+            var Cyc_Radius_Max = round(Math.max.apply(null, cyc_radius_array), 2); 
+            var Cyc_Radius_Min = round(Math.min.apply(null, cyc_radius_array), 2); 
+            var Anti_Radius_Max = round(Math.max.apply(null, anti_radius_array), 2); 
+            var Anti_Radius_Min = round(Math.min.apply(null, anti_radius_array), 2); 
+            var Cyc_Radius_Sum = 0, Anti_Radius_Sum = 0;
+            
+            var Cyc_Volume_Max = round(Math.max.apply(null, cyc_volume_array), 2); 
+            var Cyc_Volume_Min = round(Math.min.apply(null, cyc_volume_array), 2);  
+            var Anti_Volume_Max = round(Math.max.apply(null, anti_volume_array), 2); 
+            var Anti_Volume_Min = round(Math.min.apply(null, anti_volume_array), 2);   
+            var Cyc_Volume_Sum = 0, Anti_Volume_Sum = 0;                   
+
+             
+            for (var i1=0; i1<cyc_depth_array.length; i1++)
+            {             	   	  
+             	  Cyc_Depth_Sum = Cyc_Depth_Sum + cyc_depth_array[i1];
+             	  Cyc_Radius_Sum = Cyc_Radius_Sum + cyc_radius_array[i1];
+             	  Cyc_Volume_Sum = Cyc_Volume_Sum + cyc_volume_array[i1];
+            }
+            
+            for (var i1=0; i1<anti_depth_array.length; i1++)
+            {             	   	  
+             	  Anti_Depth_Sum = Anti_Depth_Sum + anti_depth_array[i1];
+             	  Anti_Radius_Sum = Anti_Radius_Sum + anti_radius_array[i1];
+             	  Anti_Volume_Sum = Anti_Volume_Sum + anti_volume_array[i1];
+            }
+            
+                         
+            var Cyc_Depth_Avg = round(Cyc_Depth_Sum/cyc_depth_array.length, 2);
+            var Cyc_Radius_Avg = round(Cyc_Radius_Sum/cyc_depth_array.length, 2);
+            var Cyc_Volume_Avg = round(Cyc_Volume_Sum/cyc_depth_array.length, 2);
+             
+            var Anti_Depth_Avg = round(Anti_Depth_Sum/anti_depth_array.length, 2);
+            var Anti_Radius_Avg = round(Anti_Radius_Sum/anti_depth_array.length, 2);
+            var Anti_Volume_Avg = round(Anti_Volume_Sum/anti_depth_array.length, 2);
+
+            var showtext = "###### Statistics of the Cyclonic Eddies ######".bold() + '<br>';
+            showtext = showtext + "- Number: ".bold() + '&nbsp &nbsp' + cyc_depth_array.length + '<br>' + '<br>'; 
+            showtext = showtext + "- Depth (m)".bold() + '&nbsp &nbsp' + "Max: " + Cyc_Depth_Max + '&nbsp &nbsp &nbsp' + "Min: " + Cyc_Depth_Min + '&nbsp &nbsp &nbsp' + "Avg.: " + Cyc_Depth_Avg + '<br>' + '<br>';                
+            showtext = showtext + "- Radius (km)".bold() + '&nbsp &nbsp' + "Max: " + Cyc_Radius_Max + '&nbsp &nbsp &nbsp' + "Min: " + Cyc_Radius_Min + '&nbsp &nbsp &nbsp' + " Avg.: " + Cyc_Radius_Avg + '<br>' + '<br>';                                                           
+            showtext = showtext + "- Volume (km2)".bold() + '&nbsp &nbsp' + "Max: " + Cyc_Volume_Max + '&nbsp &nbsp &nbsp' + "Min: " + Cyc_Volume_Min + '&nbsp &nbsp &nbsp' + " Avg.: " + Cyc_Volume_Avg + '<br>' + '<br>' + '<br>' + '<br>';           
+                                                               
+            showtext = showtext + "###### Statistics of the Anti-Cyclonic Eddies ######".bold() + '<br>';
+            showtext = showtext + "- Number: ".bold() + '&nbsp &nbsp' + anti_depth_array.length + '<br>' + '<br>'; 
+            showtext = showtext + "- Depth (m)".bold() + '&nbsp &nbsp' + "Max: " + Anti_Depth_Max + '&nbsp &nbsp &nbsp' + "Min: " + Anti_Depth_Min + '&nbsp &nbsp &nbsp' + "Avg.: " + Anti_Depth_Avg + '<br>' + '<br>';                
+            showtext = showtext + "- Radius (km)".bold() + '&nbsp &nbsp' + "Max: " + Anti_Radius_Max + '&nbsp &nbsp &nbsp' + "Min: " + Anti_Radius_Min + '&nbsp &nbsp &nbsp' + " Avg.: " + Anti_Radius_Avg + '<br>' + '<br>';                                                           
+            showtext = showtext + "- Volume (km2)".bold() + '&nbsp &nbsp' + "Max: " + Anti_Volume_Max + '&nbsp &nbsp &nbsp' + "Min: " + Anti_Volume_Min + '&nbsp &nbsp &nbsp' + " Avg.: " + Anti_Volume_Avg + '<br>' + '<br>' + '<br>' + '<br>';   
+            
+              
+            infoWindow = window.open("", "Information Window", "width=480,height=480");   
+            infoWindow.document.write(showtext);  
+        }            
+    };
+        
+                
+    var config = new GuiConfig();
+    gui.add(config, 'Load *.day or *.path Files');    
+    gui.add(config, 'Export Statistics'); 
+    gui.add(filepro, 'File Type', filepro['File Type']);  
+                 
+    gui.add(controls, 'duration', 20, 60);
+    gui.add(controls, 'depth', 100, 2000);
+
+    gui.__ul.childNodes[0].childNodes[0].childNodes[0].classList += ' full_width';  
+    
+    
+    insetRenderer = new THREE.WebGLRenderer({ alpha: true });
+    //insetRenderer.setClearColor( 0xffffff, 0 );
+    insetRenderer.setSize( CANVAS_WIDTH, CANVAS_HEIGHT );
+
+    container2 = document.getElementById('inset');          
+    container2.appendChild( insetRenderer.domElement );
+
+    scene2 = new THREE.Scene();
+
+    camera2 = new THREE.PerspectiveCamera( 60, CANVAS_WIDTH / CANVAS_HEIGHT, 0.1, 2000 );
+    camera2.up = camera.up; 
+
+    var axes = drawAxes( 65 );
+    scene2.add( axes );  
+                
+    plotOceanBasin();       
+}
+
+       
+        
+function render() 
+{
+	  //console.log(skeletonlist); 
+	  var depth_threshold = controls.depth;  	
+	  var duration_threshold = controls.duration;
+	  
+	  if (file_type == 0)
+	  {	 
+	     for (var i=0; i<skeletonlist.length; i++)
+	     {
+	  	     var thisdepth = 1200*skeletonlist[i].geometry.parameters.height;
+	  	     //console.log(thisdepth);
+	  	   
+	  	     if (thisdepth < depth_threshold)
+              skeletonlist[i].material.opacity = 0;
+            	     
+           else
+              skeletonlist[i].material.opacity = 0.99;
+	     }
+	  }
+	  
+	  else if (file_type == 1)
+	  {
+	     for (var i=0; i<skeletonlist.length; i++)
+	     {
+	  	     var thisduration = durationlist[i];
+	  	   
+	  	     if (thisduration < duration_threshold)
+              skeletonlist[i].material.opacity = 0;
+            	     
+           else
+              skeletonlist[i].material.opacity = 0.99;
+	     }
+	  }
+	  
+	  
+	
+    var delta = clock.getDelta();       	
+    trackballControls.update(delta);
+                                    
+    camera2.position.copy( camera.position );
+	  camera2.position.setLength( CAM_DISTANCE );
+    camera2.lookAt( scene2.position );
+    
+                                	  
+    requestAnimationFrame(render);
+    webGLRenderer.render(scene, camera);
+    insetRenderer.render(scene2, camera2);
+}            
+
+
+
+function openselectedfiles( filelist )
+{ 
+	  skeletonlist = [];
+	  durationlist = [];
+	  cyc_depth_array = [], anti_depth_array = [], cyc_radius_array = [], anti_radius_array = [], cyc_volume_array = [], anti_volume_array = [];
+	  file_type = -1;
+	  fileID = 0;
+	         
+    for (var i=0; i<filelist.length; i++)       
+        readeddyfile(filelist[i]);
+}
+
+
+
+function readeddyfile(eddyfilename)
+{
+	  var vertices = [];                      
+	  var eddyMaterial; 	          	                              
+    var reader = new FileReader(); 
+     	                
+    reader.onload = function(e) 
+    {  	       	          	
+        var text = e.target.result;                
+        var inputlines = text.split(/[\r\n]+/g); 
+        var spin, depth, cx, cy, cz;  
+        
+        var file_header = inputlines[0];
+        
+        if (file_header == "******path******")
+        { 
+        	 if (fileID == 0)
+        	 {        	 	 
+              for (var i1 = group.children.length - 1; i1 >= 3; i1--) 
+                  group.remove(group.children[i1]);
+        	 }
+        	
+        	       	        	
+        	 file_type = 1;
+        	 filepro['File Type'] = "*.path";
+        	 
+        	 for (var i in gui.__controllers) 
+               gui.__controllers[i].updateDisplay();	  
+        	        
+    	     var date_period = inputlines[1];  
+    	     var pathproperties = inputlines[2];   	  
+           var spin = parseInt(inputlines[3]);        
+           var path_len = 0;
+                                
+             
+           for (var i=4; i<inputlines.length-1; i++)
+           {
+           	   var thisline = inputlines[i];
+               var vectors = thisline.split(" ");
+              	          	               	                	  
+               if ( vectors.length == 3 && parseInt(vectors[0])==155 && parseInt(vectors[1])==155 )
+               {
+               	  i++;              	    
+                  thisline = inputlines[i];   
+               	  var vectors1 = thisline.split(" ");              	    
+                  var volume = parseInt(vectors1[0]);
+                  var center_x = parseFloat(vectors1[1]);
+                  var center_y = parseFloat(vectors1[2]);
+                  var center_z = parseFloat(vectors1[3]);
+                  var low_x = parseFloat(vectors1[4]);
+                  var low_y = parseFloat(vectors1[5]);
+                  var low_z = parseFloat(vectors1[6]);
+                  var up_x = parseFloat(vectors1[7]);
+                  var up_y = parseFloat(vectors1[8]);
+                  var up_z = parseFloat(vectors1[9]);   
+              
+                  depth = up_z - low_z;
+                  var mapradius = 0.5*Math.sqrt((up_x-low_x)*(up_y-low_y));  
+                  var thisradius = 111*mapradius*Math.cos( (center_y/180)*Math.PI  );                     
+                  
+                  if (spin > 0)
+                  {
+                     eddyMaterial = new THREE.MeshBasicMaterial({color: 0xFFFF66, transparent: true, opacity: 0.99});
+                     cyc_depth_array.push(1200*depth);
+                     cyc_volume_array.push(thisradius*thisradius*(up_z - low_z));
+                     cyc_radius_array.push(thisradius);
+                  }
+                 
+                  else if (spin < 0)
+                  {
+            	       eddyMaterial = new THREE.MeshBasicMaterial({color: 0x6600cc, transparent: true, opacity: 0.99});  
+            	       anti_depth_array.push(1200*depth);
+                     anti_volume_array.push(thisradius*thisradius*(up_z - low_z));
+                     anti_radius_array.push(thisradius);
+                  }
+                  
+     
+              
+                  i++;              	    
+                  thisline = inputlines[i];              	    
+                  var vectors2 = thisline.split(" ");
+              	    
+                  var points_num = parseInt(vectors2[0]);
+                  i = i+points_num+1;                  
+              
+                  var faces_num_string = inputlines[i];
+                  var faces_num = parseInt(faces_num_string);
+                  i = i+faces_num+1;
+              
+                  var cygeometry = new THREE.CylinderGeometry( 0.1, 0.1, 1.3*depth, 2 );
+                  var cylinder = new THREE.Mesh( cygeometry, eddyMaterial );
+                  cylinder.position.set(center_x, center_y, -0.7*depth);               
+                  cylinder.rotation.x -= 0.5*Math.PI;        
+            
+                  skeletonlist.push(cylinder);                   
+                  group.add(cylinder);     
+                  path_len++;             	
+                }   	       	     
+           } 
+        
+           for (var i=0; i<path_len; i++)
+               durationlist.push(path_len);
+        
+           scene.add( pivot );
+           pivot.add( group );   
+           
+           fileID++;       
+        } 
+        
+        
+        else if (file_header == "******day******")
+        {
+        	 if (fileID == 0)
+        	 {        	 	 
+              for (var i1 = group.children.length - 1; i1 >= 3; i1--) 
+                  group.remove(group.children[i1]);
+        	 }
+        	
+        	 file_type = 0;
+        	 filepro['File Type'] = "*.day";
+        	 
+        	 for (var i in gui.__controllers) 
+               gui.__controllers[i].updateDisplay();	
+               
+           var date = inputlines[1];                   
+        	 
+        	 for (var i=2; i<inputlines.length-1; i++)
+           {           	
+             	 var thisline = inputlines[i];
+               var vectors = thisline.split(" ");
+              	          	               	                	  
+               if ( vectors.length == 3 && parseInt(vectors[0])==155 && parseInt(vectors[1])==155 )
+               {
+               	  i++; 
+                  spin = parseFloat(inputlines[i]);
+                  i++;
+                  thisline = inputlines[i];
+                   
+                  var vectors1 = thisline.split(" ");              	    
+                  var volume = parseInt(vectors1[0]);
+                  var center_x = parseFloat(vectors1[1]);
+                  var center_y = parseFloat(vectors1[2]);
+                  var center_z = parseFloat(vectors1[3]);
+                  var low_x = parseFloat(vectors1[4]);
+                  var low_y = parseFloat(vectors1[5]);
+                  var low_z = parseFloat(vectors1[6]);
+                  var up_x = parseFloat(vectors1[7]);
+                  var up_y = parseFloat(vectors1[8]);
+                  var up_z = parseFloat(vectors1[9]);   
+              
+                  depth = up_z - low_z;
+                  var mapradius = 0.5*Math.sqrt((up_x-low_x)*(up_y-low_y));  
+                  var thisradius = 111*mapradius*Math.cos( (center_y/180)*Math.PI  );         
+                  
+                  if ( 1000*depth>100 && (spin > 0 || spin < -0.1) )
+                  {
+                     if (spin > 0)
+                     {
+                        eddyMaterial = new THREE.MeshBasicMaterial({color: 0xFFFF66, transparent: true, opacity: 0.99}); 
+                        cyc_depth_array.push(1200*depth);
+                        cyc_volume_array.push(thisradius*thisradius*(up_z - low_z));
+                        cyc_radius_array.push(thisradius);
+                     }
+            
+                     else if (spin < 0)
+                     {
+            	          eddyMaterial = new THREE.MeshBasicMaterial({color: 0x6600cc, transparent: true, opacity: 0.99}); 
+            	          anti_depth_array.push(1200*depth);
+                        anti_volume_array.push(thisradius*thisradius*(up_z - low_z));
+                        anti_radius_array.push(thisradius);
+                     }
+                                   
+                     i++;              	    
+                     thisline = inputlines[i];              	    
+                     var vectors2 = thisline.split(" ");
+              	    
+                     var points_num = parseInt(vectors2[0]);
+                     i = i+points_num+1;
+                                
+                     var faces_num_string = inputlines[i];
+                     var faces_num = parseInt(faces_num_string);
+                     i = i+faces_num+1;
+                          
+                     var cygeometry = new THREE.CylinderGeometry( 0.1, 0.1, 1.3*depth, 2 );
+                     var cylinder = new THREE.Mesh( cygeometry, eddyMaterial );
+                     cylinder.position.set(center_x, center_y, -0.7*depth);                      
+                     cylinder.rotation.x -= 0.5*Math.PI;
+               
+                     skeletonlist.push(cylinder);      
+                     group.add(cylinder);
+                  }             	
+               }  	
+             
+           } 
+        
+           scene.add( pivot );
+           pivot.add( group );   
+           
+           fileID++;       
+        }	
+        
+        else
+        {
+       	   alert("The Files Can Not be Readed! Please Select *.day or *.path Files.");
+           return;
+        }                                     
+    };
+        
+    reader.readAsText(eddyfilename,"UTF-8");  
+}
+
+
+
+function plotOceanBasin()
+{
+	  var xhttp = new XMLHttpRequest();                 
+	      
+	  xhttp.onreadystatechange = function() 
+    {
+        if (this.readyState == 4 && this.status == 200) 
+        {           	          	
+           var inputlines = this.responseText.split("\n");
+           var f = 0, f1 = 0, f2 = 0, f2a = 0, f3 = 0;
+                         	  
+           for (var i=0; i<inputlines.length; i++)
+           {
+               var thisline = inputlines[i];
+               var vectors = thisline.split(" ");              	  
+              	  
+               var p1_x = parseFloat(vectors[0]);
+               var p1_y = parseFloat(vectors[1]);
+               var p1_z = parseFloat(vectors[2]);
+              	  
+               var p2_x = parseFloat(vectors[3]);
+               var p2_y = parseFloat(vectors[4]);
+               var p2_z = parseFloat(vectors[5]);
+              	  
+               var p3_x = parseFloat(vectors[6]);
+               var p3_y = parseFloat(vectors[7]);
+               var p3_z = parseFloat(vectors[8]);
+              	  
+	      	      
+	             if ( p1_z > 0 || p2_z > 0 || p3_z > 0 )
+	             {	      
+	                surfacegeometry.vertices.push(new THREE.Vector3( p1_x, p1_y, p1_z ));
+                  surfacegeometry.vertices.push(new THREE.Vector3( p2_x, p2_y, p2_z ));
+                  surfacegeometry.vertices.push(new THREE.Vector3( p3_x, p3_y, p3_z ));
+                  surfacegeometry.faces.push( new THREE.Face3( f, f+1, f+2 ) );
+                  f+=3;
+               }
+                  
+               else
+               {                 	
+                  seabedgeometry.vertices.push(new THREE.Vector3( p1_x, p1_y, p1_z ));
+                  seabedgeometry.vertices.push(new THREE.Vector3( p2_x, p2_y, p2_z ));
+                  seabedgeometry.vertices.push(new THREE.Vector3( p3_x, p3_y, p3_z ));                                          
+                  seabedgeometry.faces.push( new THREE.Face3( f1, f1+1, f1+2 ) );
+                  f1+=3;
+                  	                  	
+                  oceangeometry.vertices.push(new THREE.Vector3( p1_x, p1_y, 0 ));
+                  oceangeometry.vertices.push(new THREE.Vector3( p2_x, p2_y, 0 ));
+                  oceangeometry.vertices.push(new THREE.Vector3( p3_x, p3_y, 0 ));                                          
+                  oceangeometry.faces.push( new THREE.Face3( f2, f2+1, f2+2 ) );
+                  f2+=3;                      
+               }
+
+               if ( (p1_y > 55) && (p1_z > 0.95 || p2_z > 0.95 || p3_z > 0.95) )
+               {                  
+                  snowmountaingeometry.vertices.push(new THREE.Vector3( p1_x, p1_y, p1_z ));
+                  snowmountaingeometry.vertices.push(new THREE.Vector3( p2_x, p2_y, p2_z ));
+                  snowmountaingeometry.vertices.push(new THREE.Vector3( p3_x, p3_y, p3_z ));                                         
+                  snowmountaingeometry.faces.push( new THREE.Face3( f3, f3+1, f3+2 ) );
+                  f3+=3;
+               }                                                      
+	         }
+                         
+           surfacegeometry.computeFaceNormals();
+           snowmountaingeometry.computeFaceNormals();
+           oceangeometry.computeFaceNormals();
+           seabedgeometry.computeFaceNormals();
+                            
+           var surface_mat = new THREE.MeshLambertMaterial({color: 0xFF9933});                            
+           var surfacemesh = new THREE.Mesh(surfacegeometry, surface_mat);
+           surfacemesh.castShadow = true;
+           surfacemesh.receiveShadow = true;
+                            
+           //var seabed_mat = new THREE.MeshLambertMaterial({color: 0x377C79});    
+           var seabed_mat = new THREE.MeshLambertMaterial({color: 0x00cc80});                          
+           var seabedmesh = new THREE.Mesh(seabedgeometry, seabed_mat);
+           seabedmesh.castShadow = true;
+           seabedmesh.receiveShadow = true;
+                      
+                            
+           var snow_mat = new THREE.MeshPhongMaterial({color: 0xFFFFFF});                 
+           snow_mat.ambient = new THREE.Color(0xFFFFFF);
+           snow_mat.emissive = new THREE.Color(0x2a2a2a);
+           snow_mat.specular = new THREE.Color(0xFFFFFF);
+           snow_mat.shininess = 1.2;
+                                       
+           var snowmountainmesh = new THREE.Mesh(snowmountaingeometry, snow_mat);
+           snowmountainmesh.castShadow = true;
+           snowmountainmesh.receiveShadow = true;
+                            
+           var ocean_mat = new THREE.MeshLambertMaterial({color: 0x00CC66});     
+           ocean_mat.ambient = new THREE.Color(0x00CC66);
+           ocean_mat.emissive = new THREE.Color(0x2a2a2a);
+           ocean_mat.specular = new THREE.Color(0x00CC66);
+              
+           ocean_mat.opacity = 0.25;
+           ocean_mat.transparent = true;
+                                                   
+           var oceanmesh = new THREE.Mesh(oceangeometry, ocean_mat);
+           oceanmesh.castShadow = true;
+           oceanmesh.receiveShadow = true;
+                                                  
+           group.add(surfacemesh); 
+           group.add(snowmountainmesh); 
+           group.add(seabedmesh);  
+                        
+           group.scale.set(1.6, 1.6, 1.6);
+           //group.translateX(-20);
+                                         
+           var box = new THREE.Box3().setFromObject( group );
+           box.center( group.position );   //this re-sets the mesh position
+           group.position.multiplyScalar( -1 );
+                  
+           scene.add( pivot );
+           pivot.add( group );
+                   
+                      //pivot.rotation.y = 0.5;
+           pivot.rotation.x -= 0.5*Math.PI;
+           pivot.rotation.z = 0.4*Math.PI;                                                   
+	      }	      	       	   
+    };
+        
+    xhttp.open("GET", "seabedtri.txt", true);
+    xhttp.send();
+}  
+  
+
+    
+function coordAxes( length ) 
+{
+    var axes = new THREE.Object3D();
+
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( length, 0, 0 ), 0xFF0000, false ) ); // +X
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( -length, 0, 0 ), 0xFF0000, true) ); // -X
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, length, 0 ), 0x00FF00, false ) ); // +Y
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, -length, 0 ), 0x00FF00, true ) ); // -Y
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, length ), 0x0000FF, false ) ); // +Z
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, -length ), 0x0000FF, true ) ); // -Z
+
+    return axes;
+}
+
+
+
+function buildAxis( src, dst, colorHex, dashed ) 
+{
+    var geom = new THREE.Geometry(), mat;
+
+    if (dashed) 
+    {
+       mat = new THREE.LineDashedMaterial({ linewidth: 6, color: colorHex, dashSize: 3, gapSize: 3 });
+    }
+             
+    else 
+    {
+       mat = new THREE.LineBasicMaterial({ linewidth: 6, color: colorHex });
+    }
+
+    geom.vertices.push( src.clone() );
+    geom.vertices.push( dst.clone() );
+    geom.computeLineDistances();  // This one is SUPER important, otherwise dashed lines will appear as simple plain lines
+
+    var axis = new THREE.Line( geom, mat, THREE.LinePieces );
+    return axis;
+}
+
+
+
+function round(value, decimals) 
+{
+    return Number(Math.round(value+'e'+decimals)+'e-'+decimals);
+}
+
+
+function cylinderLine(point1, point2, radius1, radius2, material) 
+{
+    var direction = new THREE.Vector3().subVectors(point2, point1);
+    var orientation = new THREE.Matrix4();
+    orientation.lookAt(point1, point2, new THREE.Object3D().up);
+    orientation.multiply(new THREE.Matrix4().set(1, 0, 0, 0,
+                                                 0, 0, 1, 0,
+                                                 0, -1, 0, 0,
+                                                 0, 0, 0, 1));
+    var edgeGeometry = new THREE.CylinderGeometry(radius2, radius1, direction.length(), 10, 1);
+    var edge = new THREE.Mesh(edgeGeometry, material);
+    edge.applyMatrix(orientation);
+    
+    edge.position.x = (point2.x + point1.x) / 2;
+    edge.position.y = (point2.y + point1.y) / 2;
+    edge.position.z = (point2.z + point1.z) / 2;
+    
+    return edge;
+}
+
+
+
+function drawAxes( length ) 
+{
+    var axes = new THREE.Object3D();
+    var material1 = new THREE.MeshBasicMaterial({color: 0xFF0000, transparent: true, opacity: 0.99});
+    var material2 = new THREE.MeshBasicMaterial({color: 0xCC00CC, transparent: true, opacity: 0.99});
+    var material3 = new THREE.MeshBasicMaterial({color: 0x0000FF, transparent: true, opacity: 0.99});
+       
+
+    axes.add( cylinderLine( new THREE.Vector3( -length, 0, 0 ), new THREE.Vector3( length, 0, 0 ), 2, 2, material1 ) ); 
+    axes.add( cylinderLine( new THREE.Vector3( 0, -length, 0 ), new THREE.Vector3( 0, length, 0 ), 2, 2, material2 ) ); 
+    axes.add( cylinderLine( new THREE.Vector3( 0, 0, -length ), new THREE.Vector3( 0, 0, length ), 2, 2, material3 ) ); 
+    
+    axes.add( cylinderLine( new THREE.Vector3( length, 0, 0 ), new THREE.Vector3( 1.2*length, 0, 0 ), 5, 0, material1 ) ); 
+    axes.add( cylinderLine( new THREE.Vector3( 0, length, 0 ), new THREE.Vector3( 0, 1.2*length, 0 ), 5, 0, material2 ) ); 
+    axes.add( cylinderLine( new THREE.Vector3( 0, 0, length ), new THREE.Vector3( 0, 0, 1.2*length ), 5, 0, material3 ) ); 
+    
+    
+    axes.rotation.x -= 0.5*Math.PI;
+    axes.rotation.z += 0.4*Math.PI;   
+
+
+    return axes;
+}
+
+
+
+
+</script>
+</body>
+</html>

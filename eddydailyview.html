@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Data Frame View</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">		
+		
+		<script type="text/javascript" src="../eddyGUI/lib/three.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/Stats.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/TrackballControls.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/Detector.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/dat.gui.js"></script>
+    <!--  <link type="text/css" rel="stylesheet" href="dat-gui-swec.css"> -->
+	  <script type="text/javascript" src="../eddyGUI/lib/THREEx.KeyboardState.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/THREEx.FullScreen.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/THREEx.WindowResize.js"></script>
+		
+		<style>
+			body 
+			{
+				color: #000;
+				font-family:Monospace;
+				font-size:11px;
+				background-color: #fff;
+				margin: 0px;
+			}
+			
+
+			#content 
+			{
+				position: absolute;
+				top: 0px; 
+				left: 90%;
+				width: 130px;
+				z-index: 1;
+				padding: 1em 0 0 0;
+			}
+			
+			
+			#maincontent 
+			{
+				position: fixed;
+				top: 3px; 
+				left: 3px;
+				width: 1300px;
+				z-index: 1;
+				padding: 3em 0 0 0;
+			}
+			
+			#gui
+			{
+        transform:translate(0, -85px);
+      }
+      
+      
+      #inset  
+      {
+        width: 130px;
+        height: 130px;
+        background-color: rgba(255,255,255,0.0); /* or transparent; will show through only if renderer alpha: true */
+        margin: 5px;
+        padding: 0px;
+        position: fixed;
+        left: 0px;
+        bottom: 0px;
+        z-index: 1;
+      }
+			
+			
+			#mycanvas
+			{
+				position: fixed;
+				left: 0px;
+				width: 100%;
+				height: 100%;
+			}
+			
+			
+			
+			#colorbarcanvas
+			{
+				position: fixed;
+				left: 40%;
+				top: 10px;
+				width: 360px;
+				height: 100px;
+			}
+			
+		
+			
+			
+			.main-item 
+			{
+				display: inline-block;
+				margin: 1em;
+				padding: 1em;
+			}
+			
+			.main-item .graph 
+			{
+				width: 1300px;
+				height: 1000px;
+			}
+			
+			
+
+			.list-item 
+			{
+				display: inline-block;
+				margin: 0.25em;
+				padding: 0.25em;
+				box-shadow: 1px 2px 3px 0px rgba(240,240,240,0.1);
+			}
+
+			.list-item .scene 
+			{
+				width: 120px;
+				height: 120px;
+				background-color: rgba(0,0,0,0.05);
+			}
+
+			.list-item .description 
+			{
+				color: #888;
+				font-family: sans-serif;
+				font-size: large;
+				width: 120px;
+				margin-top: 0.1em;
+			}
+			
+			
+			.longtext 
+			{
+        line-height: 13px !important;
+        height: 40px !important;
+      }
+    
+      .full_width 
+      {
+        width: 100% !important;
+      }
+			
+			
+			
+		</style>
+	</head>
+	
+
+<body>
+
+<canvas id="mycanvas">	</canvas>		
+<canvas id="colorbarcanvas"></canvas>	
+
+<input id="myInput" type="file" style="visibility:hidden" />
+
+<div id="content"> </div>
+<div id="maincontent"> </div>
+
+<script id="template" type="notjs">
+	<div class="scene"></div>
+	<div class="description">Eddy $</div>
+</script>
+
+
+<script id="maintemplate" type="notjs">
+	<div class="graph"></div>
+</script>
+
+
+<div id="inset"> </div>		
+		
+<script>
+			
+var canvas, content, maincontent, template;
+var trackballControls;
+var scenes = [];
+var scene2;
+var elementlist = [], meshlist = [], geometrylist = [], materiallist = [];
+var cx_array = [], cy_array = [], cz_array = [], depth_array = [], radius_array = [], mapradius_array, volume_array = [], spin_array = [], minmaxarray = [];
+var temparray0 = [], redarray0 = [], greenarray0 = [], bluearray0 = [];
+var temparray1 = [], redarray1 = [], greenarray1 = [], bluearray1 = [];
+var temparray2 = [], redarray2 = [], greenarray2 = [], bluearray2 = [];
+var temparray3 = [], redarray3 = [], greenarray3 = [], bluearray3 = [];
+var mainscene, mainmesh, selectedmesh;
+var maincamera, camera2;
+var renderer, renderer2, currentmesh;
+var currentEddyID = 1;
+
+var legendleft = 0, legendright = 0;
+
+var mainmat = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: THREE.VertexColors, transparent: true, blending: THREE.MultiplyBlending });
+var cubeMaterial = new THREE.MeshDepthMaterial();
+var sidemat, saved_mat; 
+
+var pivot = new THREE.Group(); 
+var group = new THREE.Object3D();
+
+var clock = new THREE.Clock();
+var projector = new THREE.Projector();
+var mouse = { x: 0, y: 0 };
+
+displaymodes = { a: false, b: false }  
+eddyvariables = { a: false, b: false, c: false } 
+var currentDataFile = '';
+var filename = "", filedate = "";
+var generalcontrols, eddyproperties;
+var eddyDepth=0, eddyRadius=0, eddyVolume=0, spin_orientation=0;
+var gui, eddypro, axes;
+var eddy_num = 0;
+
+var infoWindow;
+
+
+init();
+animate();
+
+
+function init() 
+{		
+	  generalcontrols = new function () 
+	  {
+        this.rotationSpeed = 0.02;
+        this.bouncingSpeed = 0.03;
+
+        this.visible = mainmat.visible;
+        this.side = "front";
+
+        this.wireframe = mainmat.wireframe;
+        this.wireframeLinewidth = mainmat.wireframeLinewidth;
+
+        this.selectedMesh = "Temperature";
+        this.shadow = "flat";
+    };
+    
+    
+    eddyproperties = function ()
+    {
+    	  this['Date'] = '0'; 
+    	  this['Orientation'] = '0';
+    	  this['Location'] = '0';
+    	  this['Depth'] = '0'; 
+    	  this['Radius'] = '0';
+    	  this['Volume'] = '0';
+    	  this['#Eddies'] = '0';
+    };
+    	
+		canvas = document.getElementById( "mycanvas" );		
+		
+		    
+	  maincamera = new THREE.PerspectiveCamera(60, (window.innerWidth-160) / window.innerHeight, 0.1, 1000);  	  
+	  maincamera.position.x = 0;
+    maincamera.position.y = 0;
+    maincamera.position.z = 2;
+
+		template = document.getElementById( "template" ).text;			
+		content = document.getElementById( "content" );		
+
+    readcolorfile ("seashorergb.txt", 0);  
+    readcolorfile ("parula.txt", 1); 
+    readcolorfile ("gnuplot.txt", 2);    
+    readcolorfile ("dawnrgb.txt", 3);       
+        
+    eddyvariables['a'] = true;					
+    
+    maincontent = document.getElementById( "maincontent" );
+    mainscene = new THREE.Scene();
+    
+    var mainelement = document.createElement( "div" );
+		mainelement.className = "main-item";
+
+	  mainscene.userData.element = mainelement.querySelector( ".graph" );
+		maincontent.appendChild( mainelement );
+    
+	  	  	  
+	  trackballControls = new THREE.TrackballControls(maincamera);
+    trackballControls.rotateSpeed = 1.0;
+    trackballControls.zoomSpeed = 1.0;
+    
+    //trackballControls.minDistance = 0.1;
+    trackballControls.maxDistance = 45;
+    
+    trackballControls.panSpeed = 1.0;
+    trackballControls.noPan = false;
+    trackballControls.staticMoving = false;
+    trackballControls.dynamicDampingFactor = 0.3;
+    trackballControls.keys = [ 65, 83, 68 ];
+           
+
+	  var hemilight = new THREE.HemisphereLight( 0xaaaaaa, 0xFF0000 );
+		hemilight.position.set( 1, 1, 10 );
+		mainscene.add( hemilight );
+		
+		var ambiColor = "#0c0c0c";
+    var ambientLight = new THREE.AmbientLight(ambiColor);
+    mainscene.add( ambientLight );
+        
+    renderer = new THREE.WebGLRenderer( { canvas: canvas, antialias: true } );
+		//renderer.setPixelRatio( window.devicePixelRatio );			
+		renderer.setSize( canvas.clientWidth, canvas.clientHeight, false );
+		
+		document.addEventListener("dblclick", ondblclick, false);
+	
+	
+	  gui = new dat.GUI({ autoPlace: false });
+    gui.domElement.id = 'gui';
+      
+    maincontent.appendChild(gui.domElement);	
+    
+    var GuiConfig = function() 
+    {
+        this['Load a *.day File'] = function() 
+        {        	        	
+            var input = document.getElementById("myInput");
+                
+            input.addEventListener('change', function(evt) 
+            {                   
+              
+                for (var i in gui.__controllers) 
+                {
+                    gui.__controllers[i].updateDisplay();
+                } 
+                
+                var filelist = evt.target.files;
+                currentDataFile = filelist[0];
+                
+                config['File Name'] = currentDataFile.name;   
+                 
+                filename = currentDataFile.name;                           
+                readdatafile(currentDataFile);                                                             
+            });
+        
+            input.click();
+        };
+        
+        this['File Name'] = 'No Data Loaded';                          
+        
+        this['Export Data Information'] = function() 
+        {  
+        	   if (infoWindow != null && ! infoWindow.closed)
+            	  infoWindow.close();
+
+             var Depth_Max = round(Math.max.apply(null, depth_array), 2);
+             var Depth_Min = round(Math.min.apply(null, depth_array), 2);
+             var Radius_Max = round(Math.max.apply(null, radius_array), 2); 
+             var Radius_Min = round(Math.min.apply(null, radius_array), 2); 
+             var Volume_Max = round(Math.max.apply(null, volume_array), 2); 
+             var Volume_Min = round(Math.min.apply(null, volume_array), 2);                     
+             
+             var Positive_Sum=0, Negative_Sum=0, Depth_Sum=0, Radius_Sum=0, Volume_Sum=0;
+             
+             for (var i1=0; i1<depth_array.length; i1++)
+             {
+             	   if (spin_array[i1] >= 0)
+             	      Positive_Sum++;
+             	   else if (spin_array[i1] < 0)
+             	   	  Negative_Sum++;
+             	   	  
+             	   Depth_Sum = Depth_Sum + depth_array[i1];
+             	   Radius_Sum = Radius_Sum + radius_array[i1];
+             	   Volume_Sum = Volume_Sum + volume_array[i1];
+             }
+             
+             var Depth_Avg = round(Depth_Sum/depth_array.length, 2), Radius_Avg = round(Radius_Sum/depth_array.length, 2), Volume_Avg = round(Volume_Sum/depth_array.length, 2);
+
+             var showtext = "###### Information of the Data Frame ######".bold() + '<br>';
+             showtext = showtext + "- File Name: ".bold() + filename + '<br>' + '<br>' + "- Date: ".bold() + filedate + '<br>' + '<br>';
+             showtext = showtext + "- Eddy #: ".bold() + '&nbsp &nbsp' + "Cyclonic: " +  Positive_Sum + '&nbsp &nbsp' + "Anticyclonic: " +  Negative_Sum + '<br>' + '<br>'; 
+             showtext = showtext + "- Depth (m)".bold() + '&nbsp &nbsp' + "Max: " + Depth_Max + '&nbsp &nbsp &nbsp' + "Min: " + Depth_Min + '&nbsp &nbsp &nbsp' + "Avg.: " + Depth_Avg + '<br>' + '<br>';                
+             showtext = showtext + "- Radius (km)".bold() + '&nbsp &nbsp' + "Max: " + Radius_Max + '&nbsp &nbsp &nbsp' + "Min: " + Radius_Min + '&nbsp &nbsp &nbsp' + " Avg.: " + Radius_Avg + '<br>' + '<br>';                                                           
+             showtext = showtext + "- Volume (km3)".bold() + '&nbsp &nbsp' + "Max: " + Volume_Max + '&nbsp &nbsp &nbsp' + "Min: " + Volume_Min + '&nbsp &nbsp &nbsp' + " Avg.: " + Volume_Avg + '<br>' + '<br>' + '<br>' + '<br>';           
+                                                               
+             showtext = showtext + "###### Information of the Selected Eddy ######".bold() + '<br>';
+                
+             showtext = showtext + "- Eddy ID: ".bold() + currentEddyID + '<br>' + '<br>';
+             showtext = showtext + "- Spin Orientation: ".bold() + eddypro['Orientation'] + '<br>' + '<br>';
+             showtext = showtext + "- Depth (m): ".bold()+ round(depth_array[currentEddyID-1], 2) + '<br>' + '<br>'; 
+             showtext = showtext + "- Radius (km): ".bold()+ round(radius_array[currentEddyID-1], 2) + '<br>' + '<br>'; 
+             showtext = showtext + "- Volume (km3): ".bold()+ round(volume_array[currentEddyID-1], 2) + '<br>' + '<br>'; 
+                
+             showtext = showtext + "- Temperature ".bold() + '&nbsp &nbsp' + "Max: " + round(minmaxarray[currentEddyID-1].tmax, 2) + '&nbsp &nbsp &nbsp' + "Min: " + round(minmaxarray[currentEddyID-1].tmin, 2) + '<br>' + '<br>';
+             showtext = showtext + "- Salinity (g/kg)".bold() + '&nbsp &nbsp' + "Max: " + round(minmaxarray[currentEddyID-1].stmax, 2) + '&nbsp &nbsp &nbsp' + "Min: " + round(minmaxarray[currentEddyID-1].stmin, 2) + '<br>' + '<br>';
+             showtext = showtext + "- Speed (m/s)".bold() + '&nbsp &nbsp' + "Max: " + round(minmaxarray[currentEddyID-1].spdmax, 2) + '&nbsp &nbsp &nbsp' + "Min: " + round(minmaxarray[currentEddyID-1].spdmin, 2) + '<br>' + '<br>';
+              
+             infoWindow = window.open("", "Information Window", "width=480,height=640");   
+             infoWindow.document.write(showtext);         
+        };                 
+    };
+    
+                 
+    var config = new GuiConfig();
+    gui.add(config, 'Load a *.day File');  
+    gui.add(config, 'Export Data Information'); 
+    gui.add(config, 'File Name', config['File Name']);
+    //gui.add(config, 'Date (Y/M/D)', config['Date']);
+
+    eddypro = new eddyproperties();
+    gui.add(eddypro, 'Date', eddypro['Date']);    
+    gui.add(eddypro, '#Eddies', eddypro['#Eddies']);
+                 
+    gui.add(displaymodes, 'a').name('Individual Eddy').listen().onChange(function(){setMode("a")});
+    gui.add(displaymodes, 'b').name('Data Frame').listen().onChange(function(){setMode("b")});
+    
+    
+    //var spGui = gui.addFolder("****** Visual Options ******");              
+    gui.add(generalcontrols, 'wireframe').onChange(function (e) { mainmat.wireframe = e });
+    //spGui.add(generalcontrols, 'visible').onChange(function (e) { mainmat.visible = e });
+        
+    
+    var vpGui = gui.addFolder("\xa0 Color Coding Options");         
+    gui.add(eddyvariables, 'a').name('Temperature').listen().onChange(function(){setVariable("a")});
+    gui.add(eddyvariables, 'b').name('Salinity').listen().onChange(function(){setVariable("b")});
+    gui.add(eddyvariables, 'c').name('Speed').listen().onChange(function(){setVariable("c")});    
+    
+    var ifGui = gui.addFolder("\xa0 Information of the Selected Eddy");    
+    gui.add(eddypro, 'Location', eddypro['Location']);
+    gui.add(eddypro, 'Orientation', eddypro['Orientation']);
+    gui.add(eddypro, 'Depth', eddypro['Depth']);
+    gui.add(eddypro, 'Radius', eddypro['Radius']);
+    gui.add(eddypro, 'Volume', eddypro['Volume']);   
+    
+
+
+    gui.__ul.childNodes[1].childNodes[0].childNodes[0].classList += ' full_width';  
+    
+     
+       
+    var axisinset = document.getElementById('inset');
+    renderer2 = new THREE.WebGLRenderer({ alpha: true });
+    renderer2.setClearColor( 0x000000, 0 );
+    renderer2.setSize( 130, 130 );
+    axisinset.appendChild( renderer2.domElement );
+
+    scene2 = new THREE.Scene();
+    camera2 = new THREE.PerspectiveCamera( 60, 1, 0.1, 1000 );
+
+    axes = drawAxes( 65 );
+    scene2.add( axes );    
+    
+    window.addEventListener( 'resize', onWindowResize, false );
+    
+		//render();    
+}
+
+
+
+function readcolorfile (colorfile, sign)
+{
+    var xhttp0 = new XMLHttpRequest();
+    xhttp0.onreadystatechange = function() 
+    {
+        	 if (this.readyState == 4 && this.status == 200) 
+        	 {
+        	  	 var inputlines = this.responseText.split("\n");
+        	  	 
+        	  	 for (var i=0; i<inputlines.length; i++)
+               {
+               	   var thisline = inputlines[i];
+              	   var vectors = thisline.split("  ");
+              	   
+              	   if (sign == 0)
+              	   {
+              	      temparray0.push(parseFloat(vectors[0]));
+              	      redarray0.push(parseFloat(vectors[1]));
+              	      greenarray0.push(parseFloat(vectors[2]));
+              	      bluearray0.push(parseFloat(vectors[3]));
+              	   }
+              	   
+              	   else if (sign == 1)
+              	   {
+              	      temparray1.push(parseFloat(vectors[0]));
+              	      redarray1.push(parseFloat(vectors[1]));
+              	      greenarray1.push(parseFloat(vectors[2]));
+              	      bluearray1.push(parseFloat(vectors[3]));
+              	   }
+              	   
+              	   else if (sign == 2)
+              	   {
+              	      temparray2.push(parseFloat(vectors[0]));
+              	      redarray2.push(parseFloat(vectors[1]));
+              	      greenarray2.push(parseFloat(vectors[2]));
+              	      bluearray2.push(parseFloat(vectors[3]));
+              	   }
+              	   
+              	   else if (sign == 3)
+              	   {
+              	      temparray3.push(parseFloat(vectors[0]));
+              	      redarray3.push(parseFloat(vectors[1]));
+              	      greenarray3.push(parseFloat(vectors[2]));
+              	      bluearray3.push(parseFloat(vectors[3]));
+              	   }
+               }
+        	 }
+    }
+       
+    xhttp0.open("GET", colorfile, true);
+    xhttp0.send();   
+}
+
+
+
+
+
+function readdatafile(datafile)
+{
+	  var reader = new FileReader();  
+                
+    reader.onload = function(e) 
+    {                 	
+       document.getElementById("content").innerHTML = "";
+       elementlist = [], geometrylist = [], materiallist = [];
+       spin_array = [], depth_array = [], radius_array = [], mapradius_array = [], volume_array = [], cx_array = [], cy_array = [], cz_array = [], minmaxarray = [];
+       var pattern, result;
+       eddy_num = 0;
+       distance = 0;
+                 	
+       var text = e.target.result;                
+       var inputlines = text.split(/[\r\n]+/g); 
+   
+       var filetype = inputlines[0];
+              
+       if (filetype != "******day******")
+       {
+       	  alert("The File Can Not be Readed! Please Select a *.day File.");
+          return;
+       }
+       
+       
+       filedate = inputlines[1];       
+       eddypro['Date'] = filedate;
+       
+           	  
+       for (var i=2; i<inputlines.length; i++)
+       {
+           var thisline = inputlines[i];
+           var vectors = thisline.split(" ");
+              	          	               	                	  
+           if ( vectors.length == 3 && parseInt(vectors[0])==155 && parseInt(vectors[1])==155 )
+           {
+              i++; 
+              spin_orientation = parseFloat(inputlines[i]);
+                       	
+              eddy_num++;                	
+              var verticecolor_red = [], verticecolor_green = [], verticecolor_blue = [];
+       
+              i++;            	    
+              thisline = inputlines[i];              	    
+              var vectors1 = thisline.split(" ");              	    
+              var volume = parseInt(vectors1[0]);
+              var center_x = parseFloat(vectors1[1]);
+              var center_y = parseFloat(vectors1[2]);
+              var center_z = parseFloat(vectors1[3]);
+              var low_x = parseFloat(vectors1[4]);
+              var low_y = parseFloat(vectors1[5]);
+              var low_z = parseFloat(vectors1[6]);
+              var up_x = parseFloat(vectors1[7]);
+              var up_y = parseFloat(vectors1[8]);
+              var up_z = parseFloat(vectors1[9]);
+                   
+              
+              var mapradius = 0.5*Math.sqrt((up_x-low_x)*(up_y-low_y)); 
+              var thisradius = 111*mapradius*Math.cos( (center_y/180)*Math.PI  );  
+     	    
+              depth_array.push( 1000.0*(up_z - low_z) );
+              mapradius_array.push( mapradius );  
+              radius_array.push( thisradius );                	    
+              volume_array.push( thisradius*thisradius*(up_z - low_z) );                 	    
+              	                  	    
+              i++;              	    
+              thisline = inputlines[i];              	    
+              var vectors2 = thisline.split(" ");
+              	    
+              points_num = parseInt(vectors2[0]);
+              var temp_min = parseFloat(vectors2[1]);
+              var temp_max = parseFloat(vectors2[2]);
+              var salt_min = parseFloat(vectors2[3]);
+              var salt_max = parseFloat(vectors2[4]);
+              var speed_min = parseFloat(vectors2[5]);
+              var speed_max = parseFloat(vectors2[6]);
+              	    
+              var currentmm = {tmin: temp_min, tmax: temp_max, stmin: salt_min, stmax: salt_max, spdmin: speed_min, spdmax: speed_max};              	    
+              minmaxarray.push(currentmm);
+              	                  	    
+              /*	                  	    
+              if (eddy_num == 1)
+              {
+              	 legendleft = Math.floor(temp_min);
+              	 legendright = Math.ceil(temp_max);
+              }
+              */
+              	    
+              	    
+              var eddygeometry = new THREE.Geometry();   
+              var j;
+              	                 	                  	     
+              for (j=i+1; j<i+points_num+1; j++)
+              {
+              	  thisline = inputlines[j];
+              	  var coordinates = thisline.split(" ");
+              	  eddygeometry.vertices.push( new THREE.Vector3( parseFloat( coordinates[0] ), parseFloat( coordinates[1] ), parseFloat( coordinates[2]) ) );
+              	     	  
+              	  var getindex;          	         
+              	                      	        
+              	  if (eddyvariables['a'] == true)
+              	  {
+              	     getindex = findcolor( parseFloat(coordinates[3]), temp_min-0.1, temp_max+0.2, spin_orientation); 
+              	        	 
+              	     if (spin_orientation>=0)
+              	     {
+                        verticecolor_red.push(redarray0[getindex]);
+                        verticecolor_green.push(greenarray0[getindex]);
+              	        verticecolor_blue.push(bluearray0[getindex]);
+              	     }
+              	           
+              	     else if (spin_orientation<0)
+              	     {
+                        verticecolor_red.push(redarray3[getindex]);
+                        verticecolor_green.push(greenarray3[getindex]);
+              	        verticecolor_blue.push(bluearray3[getindex]);
+              	     }
+                  }
+       
+                  else if (eddyvariables['b'] == true)
+                  {
+                     getindex = findcolor( parseFloat(coordinates[4]), salt_min-0.1, salt_max+0.1, spin_orientation);
+                     verticecolor_red.push(redarray1[getindex]);
+                     verticecolor_green.push(greenarray1[getindex]);
+              	     verticecolor_blue.push(bluearray1[getindex]);
+                  }
+       
+                  else if (eddyvariables['c'] == true)
+                  {
+                     getindex = findcolor( parseFloat(coordinates[5]), speed_min-0.1, speed_max+0.1, spin_orientation);
+                     verticecolor_red.push(redarray2[getindex]);
+                     verticecolor_green.push(greenarray2[getindex]);
+              	     verticecolor_blue.push(bluearray2[getindex]);
+              	  }           	     	  
+              }
+              	     
+              i = j;
+              	                  	     
+              var faces_num_string = inputlines[i];
+              var faces_num = parseInt(faces_num_string);
+              	     
+              for (j=i+1; j<i+faces_num+1; j++)
+              {
+              	  thisline = inputlines[j];
+              	  var coordinates = thisline.split(" ");
+              	     	                 	     	   
+              	  eddygeometry.faces.push( new THREE.Face3( parseInt( coordinates[1] ), parseInt( coordinates[2] ), parseInt( coordinates[3]) ) );
+              	                 	    
+              	  var color_p1 = new THREE.Color( 0xff0000 );
+              	  color_p1.setRGB( verticecolor_red[parseInt(coordinates[1])], verticecolor_green[parseInt(coordinates[1])], verticecolor_blue[parseInt(coordinates[1])] );
+              	         
+              	  var color_p2 = new THREE.Color( 0x00ff00 );
+              	  color_p2.setRGB( verticecolor_red[parseInt(coordinates[2])], verticecolor_green[parseInt(coordinates[2])], verticecolor_blue[parseInt(coordinates[2])] );
+              	         
+              	  var color_p3 = new THREE.Color( 0x0000ff );
+              	  color_p3.setRGB( verticecolor_red[parseInt(coordinates[3])], verticecolor_green[parseInt(coordinates[3])], verticecolor_blue[parseInt(coordinates[3])] );
+              	                       	         
+              	  face = eddygeometry.faces[j-i-1];	
+              	  face.vertexColors[0] = color_p1;
+              	  face.vertexColors[1] = color_p2;
+              	  face.vertexColors[2] = color_p3;              	    
+              } 
+              	     
+              i = j;  
+              	     
+              eddygeometry.computeFaceNormals();
+              eddygeometry.computeVertexNormals();
+              eddygeometry.computeBoundingSphere();
+               
+              geometrylist.push(eddygeometry);			              
+			        materiallist.push(mainmat);
+			        spin_array.push(spin_orientation);
+			        
+			        if (spin_orientation >= 0)
+                 sidemat = new THREE.MeshLambertMaterial({color: 0x66cc00});  
+          
+              else if (spin_orientation < 0)
+                 sidemat = new THREE.MeshLambertMaterial({color: 0x66cc00});
+			              
+			        currentmesh = new THREE.Mesh(eddygeometry, sidemat);	
+			        currentmesh.name = spin_orientation;  			        
+			              			              
+			        currentmesh.castShadow = true;
+              currentmesh.receiveShadow = true;		
+                 
+              currentmesh.scale.set(1, 1, 1.5); 
+               
+            
+			        var element = document.createElement( "div" );
+			        element.id = eddy_num;
+			        element.className = "list-item";
+			        element.innerHTML = template.replace( '$', eddy_num );			         
+			  			 
+			  			var scene = new THREE.Scene();  
+				      scene.userData.element = element.querySelector( ".scene" );
+				      content.appendChild( element );	
+				      
+				      
+				      
+				      
+				      var thisbox = new THREE.Box3().setFromObject( currentmesh );
+					    var boxx = thisbox.max.x - thisbox.min.x;
+					    var boxy = thisbox.max.y - thisbox.min.y;					
+					    var diameter = Math.max(boxx, boxy);
+					
+					    //console.log(diameter);
+					    
+					    var camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);			              
+				    	camera.position.x = 0;
+              camera.position.y = 0;
+					
+					    camera.position.z = 0.8+diameter;
+
+			              
+				      scene.userData.camera = camera;			            			
+				      elementlist.push(element);   	 
+               
+                 
+                 
+                 	  			  
+				         scene.add( currentmesh );
+				         scene.add( new THREE.HemisphereLight( 0xaaaaaa, 0x444444 ) );
+				            		        				            
+				         var shiftx = currentmesh.geometry.boundingSphere.center.x;
+				         var shifty = currentmesh.geometry.boundingSphere.center.y;
+				         var shiftz = currentmesh.geometry.boundingSphere.center.z;
+				            
+				         cx_array.push(shiftx);
+				         cy_array.push(shifty);
+				         cz_array.push(shiftz);
+				            
+				         currentmesh.geometry.translate( -shiftx, -shifty, -shiftz );
+				         currentmesh.rotation.x = -Math.PI / 3 ;				
+
+				         var light = new THREE.DirectionalLight( 0xffffff, 0.5 );
+				         light.position.set( 1, 1, 1 );
+			           scene.add( light );			            	
+				
+				         scenes.push( scene );  
+				        	               	     
+           }             	         	  
+       } //for                                               
+           
+                
+           
+       elementlist.forEach( function( elm )            
+		   {		       	
+			     elm.addEventListener ("click", function() 
+				   {   
+					       currentEddyID = elm.id;					  					  
+					       clickEddy(currentEddyID);
+					       
+					       //elm.style.border = "thick solid #FF8000"; 
+				   });
+		   });
+		       		       
+
+		   eddypro['#Eddies'] = elementlist.length;
+		   elementlist.forEach( function( elm )            
+		   {		       	
+			        elm.addEventListener ("click", function() 
+				      {   
+					       currentEddyID = elm.id;					  					  
+					       clickEddy(currentEddyID);
+				      });
+		   });
+		   
+		   setMode( 'a' );
+		   
+		   
+		   //axes.rotation.x -= Math.PI / 3 ;
+		   
+    };
+    
+    reader.readAsText(datafile,"UTF-8");  
+}
+
+
+
+
+
+function setMode( prop )
+{
+    for (let param in displaymodes)
+        displaymodes[param] = false;
+
+    displaymodes[prop] = true;
+    
+    while (mainscene.children.length > 0) 
+          mainscene.remove(mainscene.children[0]); 
+    
+    if (prop=='a')
+    {    	
+    	 maincamera.position.z = 2;
+       clickEddy(currentEddyID);   
+       trackballControls.reset();    
+    }
+  
+    else if (prop=='b')
+    { 
+    	 maincamera.position.z = 25;
+    	 
+    	 pivot = new THREE.Group(); 
+       group = new THREE.Object3D();
+    	 
+    	 var cv  = document.getElementById('colorbarcanvas'),	  
+       ctx = cv.getContext('2d');
+       ctx.clearRect(0, 0, canvas.width, canvas.height);
+    	 
+       displayData();
+       clickEddy(currentEddyID); 
+    }
+}
+
+
+
+function clickEddy(thisindex)
+{		  	  
+	  elementlist.forEach( function( elm )            
+		{		       	
+				elm.style.border = "thick solid #FFFFFF"; 				
+		});
+		
+		
+		elementlist.forEach( function( elm )            
+		{
+				if (elm.id == thisindex)
+				   elm.style.border = "thick solid #FF8000";
+	  });
+	  
+	  
+	  if (eddyvariables['a'] == true)
+	  {
+	  	 legendleft = round(minmaxarray[thisindex-1].tmin, 1);
+       legendright = round(minmaxarray[thisindex-1].tmax, 1);
+	  }
+	  
+	  else if (eddyvariables['b'] == true)
+	  {
+	  	 legendleft = round(minmaxarray[thisindex-1].stmin, 1);
+       legendright = round(minmaxarray[thisindex-1].stmax, 1);
+	  }
+
+	  else if (eddyvariables['c'] == true)
+	  {
+	  	 legendleft = round(minmaxarray[thisindex-1].spdmin, 2);
+       legendright = round(minmaxarray[thisindex-1].spdmax, 2);
+	  }
+	  
+    
+    if (spin_array[thisindex-1] >= 0)
+        eddypro['Orientation'] = 'Counter-Clockwise';  
+        
+    else if (spin_array[thisindex-1] < 0) 
+    	  eddypro['Orientation'] = 'Clockwise'; 
+    	
+    
+    eddypro['Location'] = "Lon: " + round(cx_array[thisindex-1], 2) + "  Lat: " + round(cy_array[thisindex-1], 2);
+    	
+    eddypro['Depth'] = round(depth_array[thisindex-1], 2) + " m";
+    eddypro['Radius'] = round(radius_array[thisindex-1], 2) + " km";
+    eddypro['Volume'] = round(volume_array[thisindex-1], 2) + " km3";
+    
+    for (var i in gui.__controllers) 
+    {
+       gui.__controllers[i].updateDisplay();
+    }
+	  
+	  	  	  
+	  if (displaymodes['a'] == true)
+	  {
+	  	 drawColorbar(legendleft, legendright, spin_array[thisindex-1]);
+	  	
+	     var newGeometry = geometrylist[thisindex-1];
+       var newMaterial = materiallist[thisindex-1];  
+
+       mainscene.remove(mainmesh);
+
+       mainmesh = new THREE.SceneUtils.createMultiMaterialObject(newGeometry, [newMaterial, cubeMaterial]);   
+       mainmesh.rotation.x = -Math.PI / 3 ;      
+    	 
+	     mainscene.add( mainmesh );		     
+	  }
+	  
+	  
+	  else if (displaymodes['b'] == true)
+	  {  	 
+	  	 var i = 0;
+	  	 meshlist.forEach( function( elm )            
+	     {		       	
+				   var this_r = meshlist[i].material.color.r;	
+				   var this_g = meshlist[i].material.color.g;
+	  	  	 var this_b = meshlist[i].material.color.b;		
+	  	  	 
+	  	  	 if ( this_r == 1 && this_g == 0 && this_b == 0 )
+	  	  	    meshlist[i].material = saved_mat.clone( );
+	  	  	    
+	  	  	 i++;
+		   });
+	  	 
+	  
+	  	 saved_mat = meshlist[thisindex-1].material.clone( );
+	  	 meshlist[thisindex-1].material = new THREE.MeshBasicMaterial({color: 0x66cc00}); 
+	  }
+}
+
+
+
+
+function displayData()
+{   
+    var i1 = 0;   
+    meshlist = [];
+    
+    var center_x = 0.5*(Math.min.apply(null, cx_array) + Math.max.apply(null, cx_array));
+	  var center_y = 0.5*(Math.min.apply(null, cy_array) + Math.max.apply(null, cy_array));
+        
+    elementlist.forEach( function( elm )            
+		{
+			  var newGeometry = geometrylist[i1];
+        var newMaterial = materiallist[i1];   
+                
+    
+        if (spin_array[i1] >= 0)        
+           currentmesh = new THREE.Mesh( newGeometry, new THREE.MeshLambertMaterial( { color: 0x66cc00, transparent: true, opacity: 0.75 } ));       
+          
+        else if (spin_array[i1] < 0)
+        	 currentmesh = new THREE.Mesh( newGeometry, new THREE.MeshLambertMaterial( { color: 0x66cc00, transparent: true, opacity: 0.75 } ));       
+        
+        currentmesh.castShadow = true;
+        currentmesh.receiveShadow = true;   
+        currentmesh.position.set( (cx_array[i1] - center_x), (cy_array[i1] - center_y), 0 ); 
+        currentmesh.name = i1+1;
+        
+        currentmesh.scale.set(1, 1, 1.3);
+             
+				group.add( currentmesh );
+				meshlist.push(currentmesh);
+								
+				i1++;
+	  });
+	  
+	  
+	  var framebox = new THREE.Box3().setFromObject(group);  
+	  var len_x = 1.2*(framebox.max.x - framebox.min.x);
+	  var len_y = 1.2*(framebox.max.y - framebox.min.y);
+	  var len_z = 1.2*(framebox.max.z - framebox.min.z);
+	  var src_x = framebox.min.x - 0.1*len_x;
+	  var src_y = framebox.min.y - 0.1*len_y;
+	  var src_z = framebox.min.z - 0.1*len_z;
+
+	  
+	  var bbox = boundingBox( src_x, src_y, src_z, len_x, len_y, len_z );
+    group.add( bbox ); 	  	  
+	  
+	  var directionlight2 = new THREE.DirectionalLight( 0xffffff );
+    directionlight2.position.set( 0, 1, 1 );
+    mainscene.add( directionlight2 );
+    
+    
+   
+    mainscene.add( pivot );
+    pivot.add( group );
+
+    pivot.rotation.x = -Math.PI / 3 ;	
+    
+    //pivot.position.x -= shift_x;
+    //pivot.position.y -= shift_y;
+      
+}
+
+
+
+function setVariable( prop )
+{
+    for (let param in eddyvariables)
+        eddyvariables[param] = false;
+
+    eddyvariables[prop] = true;        
+    readdatafile(currentDataFile);  
+}
+
+
+
+
+function onWindowResize() 
+{
+		maincamera.aspect = (window.innerWidth-160) / window.innerHeight;
+	  maincamera.updateProjectionMatrix();
+
+		renderer.setSize( canvas.clientWidth, canvas.clientHeight );
+		trackballControls.handleResize();
+
+		render();
+}
+
+
+
+
+			
+function animate() 
+{
+		render();
+		requestAnimationFrame( animate );
+}
+
+
+
+function render() 
+{		
+		var delta = clock.getDelta();       	
+    trackballControls.update(delta);  
+    
+    
+		renderer.setClearColor( 0xffffff );
+		renderer.setScissorTest( false );
+		renderer.clear();
+		renderer.setScissorTest( true );
+
+		scenes.forEach( function( scene ) 
+		{			
+          if (scene.children[0].name < 0)
+			       scene.children[0].rotation.z += 0.03;
+			       
+			    else if (scene.children[0].name >= 0)
+			    	 scene.children[0].rotation.z += -0.03;
+			    	 
+
+					// get the element that is a place holder for where we want to draw the scene
+					var element = scene.userData.element;					
+
+					// get its position relative to the page's viewport
+					var rect = element.getBoundingClientRect();
+
+					// check if it's offscreen. If so skip it
+					if ( rect.bottom < 0 || rect.top  > renderer.domElement.clientHeight || rect.right  < 0 || rect.left > renderer.domElement.clientWidth ) 
+						 return;  // it's off screen
+
+
+					// set the viewport
+					var width  = rect.right - rect.left;
+					var height = rect.bottom - rect.top;
+					var left   = rect.left;
+					var top    = rect.top;
+					
+					//console.log(left);
+
+					renderer.setViewport( left, top, width, height );
+					renderer.setScissor( left, top, width, height );
+
+					var camera = scene.userData.camera;		
+					renderer.render( scene, camera );
+		});
+	
+		renderer.setViewport( 0, 0, window.innerWidth-160, window.innerHeight );
+	  renderer.setScissor( 0, 0, window.innerWidth-160, window.innerHeight );
+		renderer.render( mainscene, maincamera );	
+		
+			     //var box = new THREE.Box3().setFromObject( mainmesh );	     
+	  maincamera.lookAt( mainscene.position );   
+			
+		
+		camera2.position.copy( maincamera.position );
+	  camera2.position.setLength( 200 );
+    camera2.lookAt( scene2.position );
+            
+    renderer2.render( scene2, camera2 );
+}
+
+
+
+
+
+
+
+function findcolor(thistemp, mintemp, maxtemp, spin_sign) 
+{	
+	  var temparray = [];
+	
+	  if (eddyvariables['a'] == true)
+	  {
+	  	 if (spin_sign>=0)
+          temparray = temparray0.slice();
+          
+       else if (spin_sign<0)
+       	  temparray = temparray3.slice();
+    }
+       
+    else if (eddyvariables['b'] == true)
+       temparray = temparray1.slice();
+       
+    else if (eddyvariables['c'] == true)
+       temparray = temparray2.slice();
+			
+	        	
+    var colorindex = -1;
+    var color_num = temparray.length;
+        	  
+    if (thistemp < mintemp)
+       return color_num - 1;
+        	     
+    else if (thistemp > maxtemp)
+       return color_num - 1;
+        	     
+    else
+    {
+       var fragment = (thistemp - mintemp)/(maxtemp - mintemp);
+       var difference = 1;
+        	  
+       for (var i=0; i<temparray.length; i++)
+       {
+        	 if ( Math.abs(fragment - temparray[i]) > difference )
+        	  	return i;
+        	  	        
+        	 else
+        	  	difference = Math.abs(fragment - temparray[i]);
+       }
+    }     	  
+}  
+
+
+
+function buildAxis( src, dst, colorHex, dashed ) 
+{
+    var geom = new THREE.Geometry(), mat;
+
+    if (dashed) 
+        mat = new THREE.LineDashedMaterial({ linewidth: 9, color: colorHex, dashSize: 5, gapSize: 5 });
+    
+    else 
+        mat = new THREE.LineBasicMaterial({ linewidth: 9, color: colorHex });
+
+    geom.vertices.push( src.clone() );
+    geom.vertices.push( dst.clone() );
+    geom.computeLineDistances(); // This one is SUPER important, otherwise dashed lines will appear as simple plain lines
+
+    var axis = new THREE.Line( geom, mat, THREE.LineSegments );
+    return axis;
+}
+        
+        
+        
+function coordAxes( length ) 
+{
+    var axes = new THREE.Object3D();
+
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( length, 0, 0 ), 0xFF0000, false ) ); // +X
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( -length, 0, 0 ), 0xFF0000, true) ); // -X
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, length, 0 ), 0x00FF00, false ) ); // +Y
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, -length, 0 ), 0x00FF00, true ) ); // -Y
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, length ), 0x0000FF, false ) ); // +Z
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, -length ), 0x0000FF, true ) ); // -Z
+
+    return axes;
+}
+
+
+  
+  
+function boundingBox( c_x, c_y, c_z, len_x, len_y, len_z ) 
+{
+    var bdbox = new THREE.Object3D();  
+    
+    var line1 = buildAxis( new THREE.Vector3( c_x, c_y, c_z ), new THREE.Vector3( c_x+len_x, c_y, c_z ), 0x000000, false );
+    var line2 = buildAxis( new THREE.Vector3( c_x, c_y, c_z ), new THREE.Vector3( c_x, c_y+len_y, c_z ), 0x000000, false );
+    var line3 = buildAxis( new THREE.Vector3( c_x, c_y, c_z ), new THREE.Vector3( c_x, c_y, c_z+len_z ), 0x000000, false );
+    
+    var line4 = buildAxis( new THREE.Vector3( c_x+len_x, c_y+len_y, c_z+len_z ), new THREE.Vector3( c_x, c_y+len_y, c_z+len_z ), 0x000000, false );
+    var line5 = buildAxis( new THREE.Vector3( c_x+len_x, c_y+len_y, c_z+len_z ), new THREE.Vector3( c_x+len_x, c_y, c_z+len_z ), 0x000000, false );
+    var line6 = buildAxis( new THREE.Vector3( c_x+len_x, c_y+len_y, c_z+len_z ), new THREE.Vector3( c_x+len_x, c_y+len_y, c_z ), 0x000000, false );
+    
+    var line7 = buildAxis( new THREE.Vector3( c_x+len_x, c_y, c_z ), new THREE.Vector3( c_x+len_x, c_y+len_y, c_z ), 0x000000, false );
+    var line8 = buildAxis( new THREE.Vector3( c_x+len_x, c_y, c_z ), new THREE.Vector3( c_x+len_x, c_y, c_z+len_z ), 0x000000, false );
+    
+    var line9 = buildAxis( new THREE.Vector3( c_x, c_y+len_y, c_z ), new THREE.Vector3( c_x+len_x, c_y+len_y, c_z ), 0x000000, false );
+    var line10 = buildAxis( new THREE.Vector3( c_x, c_y+len_y, c_z ), new THREE.Vector3( c_x, c_y+len_y, c_z+len_z ), 0x000000, false );
+    
+    var line11 = buildAxis( new THREE.Vector3( c_x, c_y, c_z+len_z ), new THREE.Vector3( c_x+len_x, c_y, c_z+len_z ), 0x000000, false );
+    var line12 = buildAxis( new THREE.Vector3( c_x, c_y, c_z+len_z ), new THREE.Vector3( c_x, c_y+len_y, c_z+len_z ), 0x000000, false );
+    
+    
+    bdbox.add(line1);
+    bdbox.add(line2);
+    bdbox.add(line3);    
+    bdbox.add(line4);
+    bdbox.add(line5);
+    bdbox.add(line6);
+    bdbox.add(line7);    
+    bdbox.add(line8);
+    bdbox.add(line9);
+    bdbox.add(line10);
+    bdbox.add(line11);
+    bdbox.add(line12);
+    
+    return bdbox;
+}  
+       
+        
+        
+function drawColorbar( mintemp, maxtemp, spin_sign )        
+{
+	  var cv  = document.getElementById('colorbarcanvas'),	  
+    ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    
+    var temparray = [], redarray = [], greenarray = [], bluearray = [];
+	
+	  if (eddyvariables['a'] == true)
+	  {
+	  	 if (spin_sign >= 0)
+	  	 {
+          temparray = temparray0.slice();
+          redarray = redarray0.slice();
+          greenarray = greenarray0.slice();
+          bluearray = bluearray0.slice();
+       }
+       
+       else if (spin_sign < 0)
+       {
+          temparray = temparray3.slice();
+          redarray = redarray3.slice();
+          greenarray = greenarray3.slice();
+          bluearray = bluearray3.slice();
+       }
+    }
+       
+    else if (eddyvariables['b'] == true)
+    {
+       temparray = temparray1.slice();
+       redarray = redarray1.slice();
+       greenarray = greenarray1.slice();
+       bluearray = bluearray1.slice();
+    }
+       
+    else if (eddyvariables['c'] == true)
+    {
+       temparray = temparray2.slice(); 
+       redarray = redarray2.slice();
+       greenarray = greenarray2.slice();
+       bluearray = bluearray2.slice();
+    }
+    
+
+    for (var i = 0; i < temparray.length; i++) 
+    {
+        //ctx.beginPath();    
+        if (i < temparray.length-1)
+        {
+           var currentRed = Math.floor(temparray.length*redarray[i]);
+           var currentGreen = Math.floor(temparray.length*greenarray[i]);
+           var currentBlue = Math.floor(temparray.length*bluearray[i]);
+               
+           ctx.fillStyle = 'rgb(' + currentRed + ', ' + currentGreen + ', ' + currentBlue + ')';            
+           ctx.fillRect( 36+(256/temparray.length)*i, 0, (256/temparray.length), 27); 
+        } 
+        
+     
+    } 
+   
+    ctx.fillStyle = 'rgb(0, 0, 0)';   
+    ctx.font="Georgia bold 12px";
+    
+    ctx.fillText(mintemp, 32, 40);      
+    ctx.fillText(maxtemp, 278, 40); 
+    
+    ctx.fillStyle = 'rgb(0, 0, 0)';
+    ctx.font="Georgia 16px";
+    
+    if (eddyvariables['a'] == true)
+       ctx.fillText("Temp: ", 0, 20);
+    else if (eddyvariables['b'] == true)
+    	 ctx.fillText("Salt: ", 0, 20);
+    else if (eddyvariables['c'] == true)
+       ctx.fillText("Speed: ", 0, 20);
+}
+
+
+
+
+
+function round(value, decimals) 
+{
+    return Number(Math.round(value+'e'+decimals)+'e-'+decimals);
+}
+
+
+
+function cylinderLine(point1, point2, radius1, radius2, material) 
+{
+    var direction = new THREE.Vector3().subVectors(point2, point1);
+    var orientation = new THREE.Matrix4();
+    orientation.lookAt(point1, point2, new THREE.Object3D().up);
+    orientation.multiply(new THREE.Matrix4().set(1, 0, 0, 0,
+                                                 0, 0, 1, 0,
+                                                 0, -1, 0, 0,
+                                                 0, 0, 0, 1));
+    var edgeGeometry = new THREE.CylinderGeometry(radius2, radius1, direction.length(), 10, 1);
+    var edge = new THREE.Mesh(edgeGeometry, material);
+    edge.applyMatrix(orientation);
+    
+    edge.position.x = (point2.x + point1.x) / 2;
+    edge.position.y = (point2.y + point1.y) / 2;
+    edge.position.z = (point2.z + point1.z) / 2;
+    
+    return edge;
+}
+
+
+function drawAxes( length ) 
+{
+    var axes = new THREE.Object3D();
+    var material1 = new THREE.MeshBasicMaterial({color: 0xFF0000, transparent: true, opacity: 0.99});
+    var material2 = new THREE.MeshBasicMaterial({color: 0xCC00CC, transparent: true, opacity: 0.99});
+    var material3 = new THREE.MeshBasicMaterial({color: 0x0000FF, transparent: true, opacity: 0.99});
+       
+
+    axes.add( cylinderLine( new THREE.Vector3( -length, 0, 0 ), new THREE.Vector3( length, 0, 0 ), 2, 2, material1 ) ); 
+    axes.add( cylinderLine( new THREE.Vector3( 0, -length, 0 ), new THREE.Vector3( 0, length, 0 ), 2, 2, material2 ) ); 
+    axes.add( cylinderLine( new THREE.Vector3( 0, 0, -length ), new THREE.Vector3( 0, 0, length ), 2, 2, material3 ) ); 
+    
+    axes.add( cylinderLine( new THREE.Vector3( length, 0, 0 ), new THREE.Vector3( 1.2*length, 0, 0 ), 5, 0, material1 ) ); 
+    axes.add( cylinderLine( new THREE.Vector3( 0, length, 0 ), new THREE.Vector3( 0, 1.2*length, 0 ), 5, 0, material2 ) ); 
+    axes.add( cylinderLine( new THREE.Vector3( 0, 0, length ), new THREE.Vector3( 0, 0, 1.2*length ), 5, 0, material3 ) ); 
+    
+    axes.rotation.x -= Math.PI / 3 ;  
+
+
+    return axes;
+}
+
+
+
+
+
+
+function ondblclick(event) 
+{
+    mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+	  mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+	  
+	
+	  var vector = new THREE.Vector3( mouse.x, mouse.y, -1 );
+	  projector.unprojectVector( vector, maincamera );
+	  var ray = new THREE.Raycaster( maincamera.position, vector.sub( maincamera.position ).normalize() );
+
+
+	  var intersects = ray.intersectObjects( meshlist );
+
+	
+	  if ( intersects.length > 0 )
+	  { 
+        //console.log( parseInt(intersects[0].object.name) );	  
+        currentEddyID = parseInt(intersects[0].object.name);					  					  
+				clickEddy(currentEddyID);
+					       
+				var element = scenes[0].userData.element;					
+				var rect = element.getBoundingClientRect();
+				
+				console.log(1.3*(currentEddyID-1)*[rect.bottom - rect.top]);
+		 
+			  window.scrollTo( 0, 1.3*(currentEddyID-1)*[rect.bottom - rect.top] );          
+    }
+}
+
+
+</script>
+</body>
+</html>

@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+	  <meta charset="utf-8"/>
+    <title>3D Eddy Path Map</title>
+    
+    
+    <script type="text/javascript" src="../eddyGUI/lib/three_mini.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/OrbitControls.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/TrackballControls.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/Detector.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/dat.gui.js"></script>
+    <!--  <link type="text/css" rel="stylesheet" href="dat-gui-swec.css"> -->
+        <script type="text/javascript" src="../eddyGUI/lib/delaunay.js"></script>
+	  <script type="text/javascript" src="../eddyGUI/lib/THREEx.KeyboardState.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/THREEx.FullScreen.js"></script>
+    <script type="text/javascript" src="../eddyGUI/lib/THREEx.WindowResize.js"></script>
+    
+    
+    <style>
+    	
+    body 
+    {
+       margin: 0;
+       overflow: hidden;
+    }
+    
+    
+    #inset  
+    {
+       width: 130px;
+       height: 130px;
+       background-color: rgba(255,255,255,0.00); 
+       margin: 5px;
+       padding: 0px;
+       position: fixed;
+       left: 0px;
+       bottom: 0px;
+       z-index: 1;
+    }
+    
+    #widget
+    {
+       width: 500px;
+       height: 300px;
+       background-color: rgba(255,255,255,0.00); 
+       margin: 0px;
+       padding: 0px;
+       position: fixed;
+       left: 0px;
+       top: 0px;
+       z-index: 1;
+    }
+    
+    
+    
+    
+  
+    			.longtext 
+			{
+        line-height: 13px !important;
+        height: 40px !important;
+      }
+    
+      .full_width 
+      {
+        width: 100% !important;
+      }
+        
+    </style>
+</head>
+
+
+<body>
+
+<input id="myInput" type="file" multiple style="visibility:hidden" />
+
+<div id="WebGL-output">
+</div>
+
+<div id="widget">
+</div>
+
+<div id="inset">
+</div>
+
+<script type="text/javascript">
+
+
+
+var container, container2, container3, scene, scene2, scene3, camera, camera2, camera3, webGLRenderer, insetRenderer, widgetRenderer, trackballControls, trackballControls3, eddypro, gui, infoWindow;
+var clock = new THREE.Clock();
+var CANVAS_WIDTH = 130, CANVAS_HEIGHT = 130, CAM_DISTANCE = 200;
+var WIDGET_WIDTH = 500, WIDGET_HEIGHT = 300, WIDGET_DISTANCE = 15;
+var projector = new THREE.Projector();
+var mouse = { x: 0, y: 0 };
+
+var pivot = new THREE.Group(); 
+var group = new THREE.Object3D();
+var surfacegeometry = new THREE.Geometry();      
+var snowmountaingeometry = new THREE.Geometry();
+var oceangeometry = new THREE.Geometry();
+var seabedgeometry = new THREE.Geometry();  
+
+var matlist = [], targetList = [], pathlist = [],  filelist = [], start_array = [], end_array = [], filename_array = [];      
+var path_index = 0, path_wide = 1;
+var ambiColor = "#0c0c0c";
+
+init();
+animate();
+
+function init() 
+{
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+                
+    camera.position.x = 100;
+    camera.position.y = 30;
+    camera.position.z = 50;
+
+        
+    // add spotlight for the shadows
+    var spotLight = new THREE.SpotLight(0xffffff);
+    spotLight.position.set(200, 150, -90);
+    spotLight.castShadow = true;
+    scene.add(spotLight); 
+            
+
+    // add subtle ambient lighting
+
+    var ambientLight = new THREE.AmbientLight(ambiColor);
+    scene.add(ambientLight);
+        
+        
+    var hemiLight = new THREE.HemisphereLight(0x0000ff, 0x00ff00, 0.6);
+    hemiLight.position.set(0, 300, 0);
+    scene.add(hemiLight);
+
+
+    webGLRenderer = new THREE.WebGLRenderer();                    
+    webGLRenderer.setClearColor(new THREE.Color(0xFFFFFF, 1.0));
+    webGLRenderer.setSize(window.innerWidth, window.innerHeight);
+    webGLRenderer.shadowMapEnabled = true;
+
+    webGLRenderer.domElement.addEventListener("dblclick", ondblclick, false);
+  
+        
+    document.getElementById("WebGL-output").appendChild(webGLRenderer.domElement);
+    trackballControls = new THREE.TrackballControls(camera, webGLRenderer.domElement);
+    trackballControls.rotateSpeed = 1.0;
+    trackballControls.zoomSpeed = 1.0;   
+    trackballControls.maxDistance = 150;    
+    trackballControls.panSpeed = 1.0;
+    trackballControls.staticMoving = true; 
+               
+    plotOceanBasin(); 
+    
+    eddyproperties = function ()
+    {
+    	  this['Date'] = 'N/A'; 
+    	  this['File Name'] = 'N/A';
+    	  this['Distance'] = 'N/A';
+    	  this['Duration'] = 'N/A';
+    };
+ 
+   
+    gui = new dat.GUI();
+               
+    var GuiConfig = function() 
+    {            
+        this['Load *.path Files'] = function() 
+        {
+            var input = document.getElementById("myInput");
+                
+            input.addEventListener('change', function(evt) 
+            { 
+                	                               
+               for (var i in gui.__controllers) 
+               {
+                   gui.__controllers[i].updateDisplay();
+               } 
+                   
+               filelist = [];    
+               filelist = evt.target.files;                                                        
+               openselectedfiles( filelist );                 
+                                                 
+            });
+        
+            input.click();
+        };
+          
+
+    }; 
+        
+                    
+  
+    var config = new GuiConfig();
+    gui.add(config, 'Load *.path Files');  
+ 
+    eddypro = new eddyproperties();
+    var ifGui = gui.addFolder("Information of the Selected Eddy Path"); 
+    gui.add(eddypro, 'Date', eddypro['Date']); 
+    gui.add(eddypro, 'File Name', eddypro['File Name']); 
+    gui.add(eddypro, 'Distance', eddypro['Distance']);
+    gui.add(eddypro, 'Duration', eddypro['Duration']);
+  
+   
+    gui.__ul.childNodes[1].childNodes[0].childNodes[0].classList += ' full_width';  
+
+    var sphereLight = new THREE.SphereGeometry(12);
+    var sphereLightMaterial = new THREE.MeshPhongMaterial({color: 0xFF8000});
+    var sphereLightMesh = new THREE.Mesh(sphereLight, sphereLightMaterial);
+        
+             
+    sphereLightMaterial.ambient = new THREE.Color(0xFF8000);
+    sphereLightMaterial.emissive = new THREE.Color(0xFF8000);
+    sphereLightMaterial.specular = new THREE.Color(0xFF8000);
+    sphereLightMaterial.shininess = 1.25;
+        
+        
+    sphereLightMesh.castShadow = true;
+    sphereLightMesh.position.x = -400; 
+    sphereLightMesh.position.y = 50;
+    sphereLightMesh.position.z = -10;
+    scene.add(sphereLightMesh);
+
+        
+    insetRenderer = new THREE.WebGLRenderer({ alpha: true });
+    //insetRenderer.setClearColor( 0xffffff, 0.00 );
+    insetRenderer.setSize( CANVAS_WIDTH, CANVAS_HEIGHT );
+        
+    container2 = document.getElementById('inset');
+    container2.appendChild( insetRenderer.domElement );
+
+    camera2 = new THREE.PerspectiveCamera( 60, CANVAS_WIDTH / CANVAS_HEIGHT, 0.1, 2000 );
+    camera2.up = camera.up; 
+
+    var axes = drawAxes( 65 );
+    scene2 = new THREE.Scene();
+    scene2.add( axes );    
+    
+         
+    camera3 = new THREE.PerspectiveCamera( 60, WIDGET_WIDTH / WIDGET_HEIGHT, 0.1, 2000 );
+    camera3.up = camera.up; 
+    scene3 = new THREE.Scene();       
+    widgetRenderer = new THREE.WebGLRenderer({ alpha: true });
+    //widgetRenderer.setClearColor( 0xffffff, 0.00 );
+    widgetRenderer.setSize( WIDGET_WIDTH, WIDGET_HEIGHT );
+
+    container3 = document.getElementById('widget');
+    container3.appendChild( widgetRenderer.domElement );   
+}
+ 
+ 
+ 
+ 
+    
+function animate() 
+{
+		render();
+		requestAnimationFrame( animate );
+}
+
+    
+function render() 
+{
+    var delta = clock.getDelta();       	
+    trackballControls.update(delta);
+                                    
+    camera2.position.copy( camera.position );
+	  camera2.position.setLength( CAM_DISTANCE );
+    camera2.lookAt( scene2.position );
+      
+
+    
+    camera3.position.copy( camera.position );   
+	  camera3.position.setLength( 6*path_wide );
+    camera3.lookAt( scene3.position );    
+                         	 
+    
+    webGLRenderer.render(scene, camera);
+    insetRenderer.render( scene2, camera2 );
+    widgetRenderer.render( scene3, camera3 );
+}     
+    
+    
+    
+function plotOceanBasin()
+{
+	  var xhttp = new XMLHttpRequest();                 
+	      
+	  xhttp.onreadystatechange = function() 
+    {
+        if (this.readyState == 4 && this.status == 200) 
+        {           	          	
+           var inputlines = this.responseText.split("\n");
+           var f = 0, f1 = 0, f2 = 0, f2a = 0, f3 = 0;
+              
+           	  
+           for (var i=0; i<inputlines.length; i++)
+           {
+               var thisline = inputlines[i];
+               var vectors = thisline.split(" ");              	  
+              	  
+               var p1_x = parseFloat(vectors[0]);
+               var p1_y = parseFloat(vectors[1]);
+               var p1_z = parseFloat(vectors[2]);
+              	  
+               var p2_x = parseFloat(vectors[3]);
+               var p2_y = parseFloat(vectors[4]);
+               var p2_z = parseFloat(vectors[5]);
+              	  
+               var p3_x = parseFloat(vectors[6]);
+               var p3_y = parseFloat(vectors[7]);
+               var p3_z = parseFloat(vectors[8]);
+              	  
+	      	      
+	             if ( p1_z > 0 || p2_z > 0 || p3_z > 0 )
+	             {	      
+	                surfacegeometry.vertices.push(new THREE.Vector3( p1_x, p1_y, p1_z ));
+                  surfacegeometry.vertices.push(new THREE.Vector3( p2_x, p2_y, p2_z ));
+                  surfacegeometry.vertices.push(new THREE.Vector3( p3_x, p3_y, p3_z ));
+                  surfacegeometry.faces.push( new THREE.Face3( f, f+1, f+2 ) );
+                  f+=3;
+               }
+                  
+               else
+               {                 	
+                  seabedgeometry.vertices.push(new THREE.Vector3( p1_x, p1_y, p1_z ));
+                  seabedgeometry.vertices.push(new THREE.Vector3( p2_x, p2_y, p2_z ));
+                  seabedgeometry.vertices.push(new THREE.Vector3( p3_x, p3_y, p3_z ));                                          
+                  seabedgeometry.faces.push( new THREE.Face3( f1, f1+1, f1+2 ) );
+                  f1+=3;
+                  	                  	
+                  oceangeometry.vertices.push(new THREE.Vector3( p1_x, p1_y, 0 ));
+                  oceangeometry.vertices.push(new THREE.Vector3( p2_x, p2_y, 0 ));
+                  oceangeometry.vertices.push(new THREE.Vector3( p3_x, p3_y, 0 ));                                          
+                  oceangeometry.faces.push( new THREE.Face3( f2, f2+1, f2+2 ) );
+                  f2+=3;                      
+               }
+
+               if ( (p1_y > 55) && (p1_z > 0.95 || p2_z > 0.95 || p3_z > 0.95) )
+               {                  
+                  snowmountaingeometry.vertices.push(new THREE.Vector3( p1_x, p1_y, p1_z ));
+                  snowmountaingeometry.vertices.push(new THREE.Vector3( p2_x, p2_y, p2_z ));
+                  snowmountaingeometry.vertices.push(new THREE.Vector3( p3_x, p3_y, p3_z ));                                         
+                  snowmountaingeometry.faces.push( new THREE.Face3( f3, f3+1, f3+2 ) );
+                  f3+=3;
+               }                                                      
+	         }
+                         
+           surfacegeometry.computeFaceNormals();
+           snowmountaingeometry.computeFaceNormals();
+           oceangeometry.computeFaceNormals();
+           seabedgeometry.computeFaceNormals();
+                            
+           var surface_mat = new THREE.MeshLambertMaterial({color: 0xFF9933});                            
+           var surfacemesh = new THREE.Mesh(surfacegeometry, surface_mat);
+           surfacemesh.castShadow = true;
+           surfacemesh.receiveShadow = true;
+                            
+           //var seabed_mat = new THREE.MeshLambertMaterial({color: 0x377C79});    
+           var seabed_mat = new THREE.MeshLambertMaterial({color: 0x00cc80});                          
+           var seabedmesh = new THREE.Mesh(seabedgeometry, seabed_mat);
+           seabedmesh.castShadow = true;
+           seabedmesh.receiveShadow = true;
+                      
+                            
+           var snow_mat = new THREE.MeshPhongMaterial({color: 0xFFFFFF});                 
+           snow_mat.ambient = new THREE.Color(0xFFFFFF);
+           snow_mat.emissive = new THREE.Color(0x2a2a2a);
+           snow_mat.specular = new THREE.Color(0xFFFFFF);
+           snow_mat.shininess = 1.2;
+                                       
+           var snowmountainmesh = new THREE.Mesh(snowmountaingeometry, snow_mat);
+           snowmountainmesh.castShadow = true;
+           snowmountainmesh.receiveShadow = true;
+                            
+
+           
+                                        
+           //group.add(surfacemesh); 
+           group.add(snowmountainmesh); 
+           //group.add(seabedmesh);  
+                        
+           group.scale.set(2, 2, 2);
+           //group.translateX(-20);
+                                         
+           var box = new THREE.Box3().setFromObject( group );
+           box.center( group.position );   //this re-sets the mesh position
+           group.position.multiplyScalar( -1 );
+                  
+           scene.add( pivot );
+           pivot.add( group );
+                   
+                      //pivot.rotation.y = 0.5;
+           pivot.rotation.x -= 0.5*Math.PI;
+           pivot.rotation.z = 0.4*Math.PI;                                                   
+	      }	      	       	   
+    };
+        
+    xhttp.open("GET", "seabedtri.txt", true);
+    xhttp.send();
+}   
+    
+    
+
+
+
+function openselectedfiles( filelist )
+{          
+        //for (var i = group.children.length - 1; i > 0; i--) 
+            //group.remove(group.children[i]);  
+    while (scene3.children.length > 0) 
+          scene3.remove(scene3.children[0]); 
+          
+    container3.style.backgroundColor = "rgba(255,255,255,0.0)";
+     
+                     
+        
+    path_index = 0;  
+    pathlist = [];
+    start_array = [];
+    end_array = [];  
+    filename_array = [];
+
+    for (var i=0; i<filelist.length; i++)      
+    { 
+    	  filename_array.push(filelist[i].name);
+        readeddyfile(filelist[i]);
+    }
+               
+}
+
+
+
+
+
+
+function readeddyfile(eddyfilename)
+{
+	  var vertices = [];                      
+	  var eddyMaterial;	  
+	  var eddysequence = new THREE.Group(); 
+	  	          	                              
+    var reader = new FileReader();    
+    
+           
+    //container3.style.backgroundColor = "rgba(255,255,255,0.0)";   
+     	                
+    reader.onload = function(e) 
+    {    	   	         	          	
+        var text = e.target.result;                
+        var inputlines = text.split(/[\r\n]+/g); 
+        
+        
+        var file_extension = inputlines[0];
+       
+        if (file_extension != "******path******")
+        {
+       	   alert("The File Can Not be Readed! Please Select a *.path File.");
+           return;
+        }
+        
+        if (path_index == 0)
+        {        	 	 
+           for (var i1 = group.children.length - 1; i1 >= 3; i1--) 
+               group.remove(group.children[i1]);
+        }
+        
+               
+    	  var date_period = inputlines[1].split("  ");
+    	  
+    	  var date_start = date_period[0];
+    	  var date_end = date_period[1];
+    	  
+        start_array.push(date_start);
+        end_array.push(date_end);
+        
+        var pathproperties = inputlines[2]; 
+        
+        
+        var startx, starty, oldx, oldy;
+        var eddyfeature_id = 0;
+                  
+        var linegeometry = new THREE.Geometry();     
+        var arrowgeometry = new THREE.SphereGeometry(0.22, 12, 12);                             
+        var spin_orientation = parseInt(inputlines[3]);
+                
+        if (spin_orientation == 1)
+	         eddyMaterial = new THREE.MeshPhongMaterial({color: 0xFFFF66});	
+	           	          
+	      else if (spin_orientation == -1)
+	         eddyMaterial = new THREE.MeshPhongMaterial({color: 0xFF007F});	 
+	                               
+          	  
+        for (var i=4; i<inputlines.length; i++)
+        {
+            var thisline = inputlines[i];
+            var vectors = thisline.split(" ");
+              	               	                	  
+            if ( vectors.length == 3 && parseInt(vectors[0])==155 && parseInt(vectors[1])==155)
+            {              	  	
+               var eddygeometry = new THREE.Geometry();   
+               var verticecolor_red = [];
+               var verticecolor_green = [];
+               var verticecolor_blue = []; 
+              	  	             	  	
+               i=i+2;
+              	     
+               var points_num_string = inputlines[i];
+               var points_num = parseInt(points_num_string);
+              	
+               var thisline = inputlines[i];              	    
+               var vectors2 = thisline.split(" ");              	    
+               var points_num = parseInt(vectors2[0]);
+                                     	                  	     
+               var j; 
+                            	     
+               for (j=i+1; j<i+points_num+1; j++)
+               {
+              	  thisline = inputlines[j];
+                	var coordinates = thisline.split(" ");
+              	     	                        	     	          
+           	     	var p1_x = parseFloat(coordinates[0]);
+           	      var p1_y = parseFloat(coordinates[1]);
+           	      var p1_z = parseFloat(coordinates[2]);              	     	                       	     	          
+              	     	          
+           	     	eddygeometry.vertices.push( new THREE.Vector3(p1_x, p1_y, p1_z*1.3) );	            	     	                                	                        	            	     
+               }
+              	     
+             	 i = j;              	     
+              	     
+           	   var faces_num_string = inputlines[i];
+           	   var faces_num = parseInt(faces_num_string);              	     
+              	     
+           	   for (j=i+1; j<i+faces_num+1; j++)
+           	   {
+           	     	 thisline = inputlines[j];
+           	     	 var coordinates = thisline.split(" ");              	     	                 	     	   
+              	   eddygeometry.faces.push( new THREE.Face3( parseInt( coordinates[1] ), parseInt( coordinates[2] ), parseInt( coordinates[3]) ) );     	                 	     	          	                  	                         	       
+               } 
+              	     
+               i = j;  
+              	     
+               eddygeometry.computeFaceNormals();
+               eddygeometry.computeVertexNormals();                           
+              	     
+               var eddymesh = new THREE.Mesh(eddygeometry, eddyMaterial);
+               eddymesh.castShadow = true;
+               eddymesh.receiveShadow = true;
+               
+               
+               
+                                                       
+               var bbox = new THREE.BoundingBoxHelper( eddymesh );
+               bbox.update();             
+                     
+               oldx = (bbox.box.min.x + bbox.box.max.x)/2;                     
+               oldy = (bbox.box.min.y + bbox.box.max.y)/2;                           
+                    
+               eddymesh.scale.set(0.5, 0.5, 1);  
+                          
+               if (eddyfeature_id==0)
+               {
+                  startx = oldx;
+                  starty = oldy;
+                  eddymesh.position.set(oldx/2, oldy/2, 0);
+                  linegeometry.vertices.push( new THREE.Vector3(oldx/2, oldy/2, 0.2) );                              	 
+               }
+                                             
+               else if (eddyfeature_id > 0)
+               {
+                  var diffx = oldx - startx;
+                  var diffy = oldy - starty;
+                  eddymesh.position.set(oldx/2+0.8*diffx, oldy/2+0.8*diffy, 0);                               
+                  linegeometry.vertices.push( new THREE.Vector3(oldx/2+0.8*diffx, oldy/2+0.8*diffy, 0.2) );  
+               }
+                                    
+               if (eddyfeature_id==0 || eddyfeature_id%2==1)                                                                                                     
+                  group.add(eddymesh); 
+                  
+               eddymesh.name = path_index;                   
+               targetList.push(eddymesh); 
+               
+               
+               var clonegeometry = eddygeometry.clone();
+               clonegeometry.applyMatrix( new THREE.Matrix4().makeTranslation( -oldx, -oldy, 0 ) );		
+		           var eddymesh_clone = new THREE.Mesh(clonegeometry, eddyMaterial);
+		           
+	
+           
+		           eddymesh_clone.position.set(oldx, oldy, 0);
+               eddysequence.add(eddymesh_clone);                                                                                                 
+               eddyfeature_id++;       	               	     
+           } 
+              	      
+              	      
+           if (i==inputlines.length-1)
+           {
+              var line = new THREE.Line( linegeometry, new THREE.LineBasicMaterial( { color: 0xFFDF00, linewidth: 28 } ) );   
+                         
+              line.scale.set(1.333,1.333,1);                                            
+              line.position.set(startx/3, starty/3, 0.5);
+              //group.add(line);  
+                         
+              var arrow_mat = new THREE.MeshBasicMaterial({color: 0xFF0000}); 
+              var arrow = new THREE.Mesh(arrowgeometry, arrow_mat);
+              arrow.position.set(oldx+0.8*(oldx-startx), oldy+0.8*(oldy-starty), 0.3);                 
+             
+              group.add(arrow);                                                    
+           }     	      
+              	          	  
+        } // for loop 
+                                      
+        scene.add( pivot );
+        pivot.add( group );  
+        
+        pathlist.push(eddysequence);  
+        path_index++;                     
+    };
+        
+    reader.readAsText(eddyfilename,"UTF-8");  
+}
+
+
+
+
+    
+function coordAxes( length ) 
+{
+    var axes = new THREE.Object3D();
+
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( length, 0, 0 ), 0xFF0000, false ) ); // +X
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( -length, 0, 0 ), 0xFF0000, true) ); // -X
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, length, 0 ), 0x00FF00, false ) ); // +Y
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, -length, 0 ), 0x00FF00, true ) ); // -Y
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, length ), 0x0000FF, false ) ); // +Z
+    axes.add( buildAxis( new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, -length ), 0x0000FF, true ) ); // -Z
+
+    return axes;
+}
+
+
+
+function buildAxis( src, dst, colorHex, dashed ) 
+{
+    var geom = new THREE.Geometry(), mat;
+
+    if (dashed) 
+    {
+       mat = new THREE.LineDashedMaterial({ linewidth: 9, color: colorHex, dashSize: 5, gapSize: 5 });
+    }
+             
+    else 
+    {
+       mat = new THREE.LineBasicMaterial({ linewidth: 9, color: colorHex });
+    }
+
+    geom.vertices.push( src.clone() );
+    geom.vertices.push( dst.clone() );
+    geom.computeLineDistances();  // This one is SUPER important, otherwise dashed lines will appear as simple plain lines
+
+    var axis = new THREE.Line( geom, mat, THREE.LinePieces );
+    return axis;
+}
+        
+  
+        
+function findcolor(thistemp, mintemp, maxtemp) 
+{      	
+    var colorindex = -1;
+        	  
+    if (thistemp < mintemp)
+       return 0;
+        	     
+    else if (thistemp > maxtemp)
+       return 255;
+        	     
+    else
+    {
+       var fragment = (thistemp - mintemp)/(maxtemp - mintemp);
+       var difference = 1;
+        	  
+       for (var i=0; i<temparray.length; i++)
+       {
+        	 if ( Math.abs(fragment - temparray[i]) > difference )
+        	  	return i;
+        	  	        
+        	 else
+        	  	difference = Math.abs(fragment - temparray[i]);
+       }
+     }     	  
+}
+ 
+
+
+
+
+function ondblclick(event) 
+{
+    mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+	  mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+	  
+	
+	  var vector = new THREE.Vector3( mouse.x, mouse.y, -1 );
+	  projector.unprojectVector( vector, camera );
+	  var ray = new THREE.Raycaster( camera.position, vector.sub( camera.position ).normalize() );
+
+
+	  var intersects = ray.intersectObjects( targetList );
+	  
+	  while (scene3.children.length > 0) 
+          scene3.remove(scene3.children[0]); 
+	  
+	
+	  if ( intersects.length > 0 )
+	  { 
+        //alert("hit");	
+ 
+        //container3.style.backgroundColor = "rgba(205,205,205,0.25)";
+        
+        container3.style.backgroundColor = "rgba(255,255,255,0.99)";
+        
+        var clickindex = parseInt(intersects[0].object.name);
+        var selectpath = pathlist[clickindex];
+        
+        var bbox = new THREE.Box3().setFromObject(selectpath);        
+        
+        var centerx = (bbox.min.x + bbox.max.x)/2;
+        var centery = (bbox.min.y + bbox.max.y)/2;
+        
+        var currentmat = selectpath.children[0].material.clone();
+        
+        var pivot1 = new THREE.Group(); 
+        var group1 = new THREE.Object3D();
+        
+        var dist_sum = 0;
+        var line_mat = new THREE.MeshBasicMaterial({color: 0x000000}); 
+        var arrow_mat = new THREE.MeshBasicMaterial({color: 0xFF0000}); 
+        
+        for (var i2=0; i2<selectpath.children.length; i2++)
+        {
+             var currentgeometry = selectpath.children[i2].geometry.clone();
+             var currentmesh = new THREE.Mesh(currentgeometry, currentmat);	
+             var currentx = selectpath.children[i2].position.x;   
+             var currenty = selectpath.children[i2].position.y; 
+                       
+             currentmesh.position.set( 12*(currentx - centerx), 12*(currenty - centery), 1 );              
+             currentmesh.scale.set(1, 1, 1.5);  
+             
+             group1.add( currentmesh );	
+                 
+             
+             if (i2<selectpath.children.length-1)
+				     {
+				     	  var nextx = selectpath.children[i2+1].position.x;   
+                var nexty = selectpath.children[i2+1].position.y; 
+                
+                dist_sum = dist_sum + geodistance(currenty, currentx, nexty, nextx, "K");
+				     	
+					      var src_x = 12*(currentx - centerx); 
+					      var src_z = 1.8; 
+				     	  var src_y = 12*(currenty - centery);
+					 
+					      var dst_x = 12*(nextx - centerx); 
+					      var dst_z = 1.8; 
+					      var dst_y = 12*(nexty - centery);
+					 
+				        if (i2 < selectpath.children.length-2)	
+				        {	 
+			             var directionline = cylinderLine(new THREE.Vector3(src_x, src_y, src_z), new THREE.Vector3(dst_x, dst_y, dst_z), 0.02, 0.02, line_mat);				   
+				           group1.add( directionline );
+			          }
+			     
+			          else
+			          {
+			     	       var endarrow = cylinderLine(new THREE.Vector3(src_x, src_y, src_z), new THREE.Vector3(dst_x, dst_y, dst_z), 0.2, 0, arrow_mat);				   
+				           group1.add( endarrow );
+			          }		
+			       }
+             
+             
+             
+             
+        }
+        
+              
+        eddypro['Date'] = start_array[clickindex] + " - " + end_array[clickindex];
+        eddypro['File Name'] = filename_array[clickindex];
+        eddypro['Duration'] = selectpath.children.length.toString();
+        eddypro['Distance'] = round(dist_sum, 2) + "km";
+    
+        //console.log(eddypro['Date']);
+         path_wide = bbox.max.x - bbox.min.x;    
+        
+        scene3.add( pivot1 );
+        pivot1.add( group1 );
+
+        pivot1.rotation.x -= 0.5*Math.PI;
+        pivot1.rotation.z = 0.4*Math.PI;  
+        
+        //pivot1.position.x += 1*path_wide;
+           
+       
+        var directionlight = new THREE.DirectionalLight( 0xcccccc, 0.75 );
+		    directionlight.position.set( 0, 0, 20 );
+		    scene3.add( directionlight );	
+		
+        var ambientLight3 = new THREE.AmbientLight(ambiColor);
+        scene3.add(ambientLight3);              
+          
+        
+	  }
+	  
+	  else
+	  {
+	  	  container3.style.backgroundColor = "rgba(255,255,255,0.0)";
+	  	  
+	  	  eddypro['Date'] = 'N/A';
+        eddypro['Duration'] = 'N/A';
+        eddypro['Distance'] = 'N/A';
+        eddypro['File Name'] = 'N/A';
+	  }
+	  
+	  
+	  for (var i in gui.__controllers) 
+    {
+        gui.__controllers[i].updateDisplay();
+    }
+        
+
+}
+
+
+
+function geodistance(lat1, lon1, lat2, lon2, unit) 
+{
+	  var radlat1 = Math.PI * lat1/180
+	  var radlat2 = Math.PI * lat2/180
+	  var theta = lon1-lon2
+	  var radtheta = Math.PI * theta/180
+	  var dist = Math.sin(radlat1) * Math.sin(radlat2) + Math.cos(radlat1) * Math.cos(radlat2) * Math.cos(radtheta);
+	  dist = Math.acos(dist)
+	  dist = dist * 180/Math.PI
+	  dist = dist * 60 * 1.1515
+	  if (unit=="K") 
+	     { dist = dist * 1.609344 }
+	  if (unit=="N") 
+	     { dist = dist * 0.8684 }
+	
+	  return dist;
+}
+ 
+ 
+ 
+function round(value, decimals) 
+{
+    return Number(Math.round(value+'e'+decimals)+'e-'+decimals);
+} 
+
+
+function cylinderLine(point1, point2, radius1, radius2, material) 
+{
+    var direction = new THREE.Vector3().subVectors(point2, point1);
+    var orientation = new THREE.Matrix4();
+    orientation.lookAt(point1, point2, new THREE.Object3D().up);
+    orientation.multiply(new THREE.Matrix4().set(1, 0, 0, 0,
+                                                 0, 0, 1, 0,
+                                                 0, -1, 0, 0,
+                                                 0, 0, 0, 1));
+    var edgeGeometry = new THREE.CylinderGeometry(radius2, radius1, direction.length(), 10, 1);
+    var edge = new THREE.Mesh(edgeGeometry, material);
+    edge.applyMatrix(orientation);
+    
+    edge.position.x = (point2.x + point1.x) / 2;
+    edge.position.y = (point2.y + point1.y) / 2;
+    edge.position.z = (point2.z + point1.z) / 2;
+    
+    return edge;
+}
+
+
+function drawAxes( length ) 
+{
+    var axes = new THREE.Object3D();
+    var material1 = new THREE.MeshBasicMaterial({color: 0xFF0000, transparent: true, opacity: 0.99});
+    var material2 = new THREE.MeshBasicMaterial({color: 0xCC00CC, transparent: true, opacity: 0.99});
+    var material3 = new THREE.MeshBasicMaterial({color: 0x0000FF, transparent: true, opacity: 0.99});
+       
+
+    axes.add( cylinderLine( new THREE.Vector3( -length, 0, 0 ), new THREE.Vector3( length, 0, 0 ), 2, 2, material1 ) ); 
+    axes.add( cylinderLine( new THREE.Vector3( 0, -length, 0 ), new THREE.Vector3( 0, length, 0 ), 2, 2, material2 ) ); 
+    axes.add( cylinderLine( new THREE.Vector3( 0, 0, -length ), new THREE.Vector3( 0, 0, length ), 2, 2, material3 ) ); 
+    
+    axes.add( cylinderLine( new THREE.Vector3( length, 0, 0 ), new THREE.Vector3( 1.2*length, 0, 0 ), 5, 0, material1 ) ); 
+    axes.add( cylinderLine( new THREE.Vector3( 0, length, 0 ), new THREE.Vector3( 0, 1.2*length, 0 ), 5, 0, material2 ) ); 
+    axes.add( cylinderLine( new THREE.Vector3( 0, 0, length ), new THREE.Vector3( 0, 0, 1.2*length ), 5, 0, material3 ) ); 
+    
+    
+    axes.rotation.x -= 0.5*Math.PI;
+    axes.rotation.z += 0.4*Math.PI;   
+
+
+    return axes;
+}
+
+
+    
+</script>
+</body>
+</html>

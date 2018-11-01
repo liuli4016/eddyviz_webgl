@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+	
+		  <meta charset="utf-8"/>
+    <title>3D Data Visual Browser</title>
+	
+<style>
+	
+	
+	
+img {
+    float: right;
+}	
+	
+	
+a:link {
+    color: green;
+    font-size: 24px;
+    font-style: italic;
+    text-decoration: underline;
+}
+a:visited {
+    color: purple;
+  
+}
+a:hover {
+    color: red;
+  
+}
+a:active {
+    color: yellow;
+
+}	
+	
+	
+
+.newbutton 
+{
+	  background-color: #4CAF50;
+	  border: none;
+	  color: #fff;
+	  text-align: center;
+    text-decoration: none;
+    position: absolute;
+	  left: 30%; 
+    
+    height:70px;
+    width:40%;
+    font-size: 32px;
+    margin: 2px 2px;
+    cursor: pointer;
+    border-radius: 12px;
+    box-shadow: 8px 10px #888888;
+}
+
+.newbutton:hover {background-color: #3e8e41}
+
+.newbutton:active 
+{
+  background-color: #3e8e41;
+  box-shadow: 0 6px #666;
+  transform: translateY(3px);
+}
+
+.newbutton:disabled 
+{
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+
+.button1 {top: 18%}
+.button2 {top: 38%}
+.button3 {top: 58%}
+.button4 {top: 78%}
+</style>
+
+<script>
+	
+
+
+
+function eddydailyview() 
+{
+   window.open('eddydailyview.html');
+}
+
+
+function skeletonview() 
+{
+   window.open('skeletonview.html');
+}
+
+function eddypathview() 
+{
+   window.open('eddypathview.html');
+}
+
+
+function multipathview() 
+{
+   window.open('3dpathmap.html');
+}
+
+
+
+
+
+</script>
+
+
+</head>
+
+
+
+<body>
+
+
+
+
+<a href="https://drive.google.com/file/d/1i-EZ6wGSCAhEkF37tIaz0Wtp7YRvtJgo/view?usp=sharing">
+<img src="questionmark.jpg" alt="questionmark" style="margin-top:-10px; width:50px;height:60px;margin-right:10px;">
+</a>
+
+
+<p style="position: fixed; bottom: -9px; right: 20px; font-size:18px; font-family:Times New Roman; font-style: italic; font-weight: bold;">Version 1.0</p>
+
+
+<form>
+	 <h2 style="font-size:48px; font-style: italic; position:absolute; top: 2%; left: 45%;  text-shadow: 3px 3px #CCCCCC"; font-weight: bold> EddyViz </h2> 
+   <input class="newbutton button1" value="Daily Eddy Instance" onclick="eddydailyview()">   
+   <input class="newbutton button2" value="Individual Eddy Path" onclick="eddypathview()">
+   <input class="newbutton button3" value="Eddy Skeleton View" onclick="skeletonview()">
+   <input class="newbutton button4" value="3D Eddy Path Map" onclick="multipathview()">
+</form>
+
+
+
+<p>  <a href="http://vizlab.rutgers.edu/">Visit Vizlab</a>  </p>
+
+
+<p style="position: fixed; bottom: -5px; font-size:14px; font-family:Times New Roman; font-style: italic; font-weight: bold;">Copyright&copy;Vizlab, Rutgers University. All Rights Reserved. </p>
+
+
+
+</body>
+</html>
